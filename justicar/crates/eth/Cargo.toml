@@ -1,0 +1,22 @@
+[package]
+name = "eth"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+alloy = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+futures-util = { workspace = true }
+log = { workspace = true }
+
+
+[features]
+default = ["contract-interact", "balance"]
+
+contract-interact = []
+balance = []

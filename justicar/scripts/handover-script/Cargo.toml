@@ -1,0 +1,13 @@
+[package]
+name = "handover-script"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+clap = { workspace = true, features = ["derive"] }
+reqwest = { workspace = true, features = ["json"] }
+tokio = { workspace = true, features = ["full"] }
+walkdir = { workspace = true }
+anyhow = { workspace = true }
+handover = { workspace = true }
+serde_json = { workspace = true }

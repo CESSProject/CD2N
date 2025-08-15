@@ -1,0 +1,55 @@
+DiskConfig:
+  # The unit of disk size configuration is GiB
+  # Ipfs disk is the main location where Retriever node store cache data
+  # File buffer is used to temporarily store intermediate data
+  FileBuffervize: 128
+  # Gateway cache is used to cache complete files uploaded by users to improve access efficiency
+  GatewayCachevize: 128
+  # Except for the ipfs disk, all the data of the node will be stored in workspace.
+  Workvpace: "./cd2n_retriever"
+
+ChainConfig:
+  # The test network ID is 11330, and the main network ID is 11331
+  ChainId: 11330
+  # You can fill in multiple RPC addresses. It is recommended to fill in one official and one local address.
+  Rpcs:
+    - "ws://cess-chain:9944" 
+    - "wss://testnet-rpc.cess.network"
+  # Cache protocol smart contract address
+  ProtoContract: "0xD185AF24121d0D6a9A3e128fB27C3704569b5E91"
+  # When the cache capacity is insufficient, the cache capacity of the configuration is automatically recharged
+  Rechargevize: 8589934592 # default: 8 GiB
+ 
+NodeConfig:
+  # Node working account private key (since the EVM contract is used, please use the Ethereum account)
+  SecretKey: "060bde84e263a9cbcc609899a4f577cc009625e6cea583042c3923c5ca9f261d" 
+  # NFT tokens required to run node
+  Token: ""
+  # Ethereum wallet account address of NFT token holder
+  TokenAcc: ""
+  # The signature of the NFT holder, please use the signature tool included in the script to generate
+  TokenAccvign: ""
+  # Polkadot wallet account mnemonics, used to register the Ovv gateway on the CEvv chain
+  Mnemonic: "spatial prepare alcohol more zoo defy please glare stumble pony myself title"
+
+ServerConfig:
+  # Mining pool name, default is "CEvv CD2N OFFICAL POOL"
+  PoolName: ""
+  # Whether to run the gateway. If true, the node comes with the gateway function.
+  LaunchGateway: true
+  # Debug mode, do not enable it in production environments!!!
+  Debug: true
+  # ipfs node address, default is local node
+  IpfsAddress: "http://ipfs_host:5001"
+  # Required configuration, default is local node
+  RedisAddress: "domain name or external ip:6379"
+  # TEE(justicar) service address, currently it must be a local node
+  TeeAddress: "http://justicar_host:1309"
+  # Retriever node external service address
+  Endpoint: "http://154.194.34.195:1306"
+  # The secret of the redis local account, please reset it and keep it consistent with the redis.conf (requirepass Cd2n@cess.net, line 903).
+  # Please configure uniformly in the redis module of nodeadm, and it will be automatically refreshed to the file.
+  RedisPwd: "cess_network@6379"
+  # Node service port, please keep it consistent with the configuration in the visual script
+  SvcPort: 1306
+  RedisLoacl: "redis_host:6379"

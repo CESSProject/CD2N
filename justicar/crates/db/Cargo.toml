@@ -1,0 +1,12 @@
+[package]
+name = "db"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+redis = { workspace = true, features = [
+    "connection-manager",
+    "tokio-comp",
+    "aio",
+] }
+tokio = { workspace = true, features = ["full"] }

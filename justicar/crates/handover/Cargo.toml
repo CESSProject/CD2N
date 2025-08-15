@@ -1,0 +1,20 @@
+[package]
+name = "handover"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+cmac = { workspace = true }
+aes = { workspace = true }
+ring = { workspace = true }
+anyhow = { workspace = true }
+thiserror={workspace = true}
+rand = {workspace = true}
+x25519-dalek = {workspace = true}
+aes-gcm = {workspace = true}
+log = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+sha2 = { workspace = true}
+async-trait = { workspace = true}
+hex = { workspace = true}

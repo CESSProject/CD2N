@@ -1,0 +1,86 @@
+[workspace]
+members = ["justicar", "crates/*", "scripts/handover-script"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+
+[workspace.dependencies]
+hex = { version = "0.4", default-features = false, features = ["alloc"] }
+serde = { version = "1", default-features = false, features = ["derive"] }
+pink-json = { version = "0.4", default-features = false }
+base64 = { version = "0.21", default-features = false, features = ["alloc"] }
+scale = { package = "parity-scale-codec", version = "3.6.5", default-features = false, features = [
+    "derive",
+] }
+scale-info = { version = "2", default-features = false, features = ["derive"] }
+chrono = { version = "0.4", default-features = true }
+const-oid = { version = "0.9.5", default-features = false }
+x509-cert = { version = "0.2.4", default-features = false }
+byteorder = { version = "1.5.0", default-features = false }
+pem = { version = "3", default-features = false }
+asn1_der = { version = "0.7", default-features = false, features = [
+    "native_types",
+] }
+der = { version = "0.7.8", default-features = false, features = ["alloc"] }
+
+log = { version = "0.4.20", default-features = false }
+
+anyhow = { version = "1" }
+thiserror = { version = "2.0.3" }
+
+ring = { version = "0.16.20", default-features = false, features = ["alloc"] }
+reqwest = { version = "0.11.27", default-features = false, features = [
+    "rustls-tls",
+    "blocking",
+    "hickory-dns",
+] }
+urlencoding = { version = "2" }
+serde_json = { version = "1.0.108", features = ["preserve_order"] }
+tracing = { version = "0.1" }
+tokio = { version = "1.41.1" }
+futures-util = "0.3"
+rand = "0.8.4"
+redis = "0.27.5"
+sha2 = "0.10.8"
+axum = "0.7"
+async-trait = "0.1"
+ipfs-cid = "2.0.0"
+clap = "4"
+webpki = { git = "https://github.com/rustls/webpki", version = "=0.102.0-alpha.3", package = "rustls-webpki", default-features = false, features = [
+    "alloc",
+    "ring",
+], rev = "2ed9a4324f48c2c46ffdd7dc9d3eb315af25fce2" }
+walkdir = "2.5.0"
+alloy = { version = "0.5.3", features = [
+    "full",
+    "node-bindings",
+    "rpc-types-debug",
+    "rpc-types-trace",
+    "json-rpc",
+    "rpc-client",
+    "signer-aws",
+    "signer-keystore",
+    "signer-ledger",
+    "signer-mnemonic",
+    "signer-trezor",
+    "signer-yubihsm",
+    "eips",
+] }
+
+cmac = "0.7.1"
+aes = "0.8.1"
+x25519-dalek = "2.0"
+aes-gcm = "0.10.3"
+secp256k1 = "0.30.0"
+bip39 = "2.1.0"
+bloom = "0.3.2"
+tiny-keccak = "2.0.2"
+tower-http = { version = "0.6.1" }
+env_logger = { version = "0.11" }
+
+##Local Crates
+sgx-attestation = { path = "crates/sgx-attestation" }
+eth = { path = "crates/eth" }
+handover = { path = "crates/handover" }
+db = { path = "crates/db" }

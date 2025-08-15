@@ -1,0 +1,34 @@
+DiskConfig:
+  IpfsDiskSize: 2048
+  FileBufferSize: 500
+  GatewayCacheSize: 500
+  WorkSpace: "./test_cd2n"
+
+ChainConfig:
+  ChainId: 11330
+  Rpcs:
+    - "wss://testnet-rpc.cess.network"
+  ProtoContract: "0xD185AF24121d0D6a9A3e128fB27C3704569b5E91"
+  RechargeSize: 8589934592 #8
+
+NodeConfig:
+  SecretKey: "b22dbc78effaba221dcc12557def7aceca27bc3727f0d1a078b682bce2fe4ff8"   #"cdce8911cc893c792cd93508322e7d3dda9c6625fb5aea8f157668680491502e"
+  Token: ""
+  TokenAcc: ""
+  TokenAccSign: ""
+  Mnemonic: "hire useless peanut engine amused fuel wet toddler list party salmon dream"
+
+ServerConfig:
+  PoolName: ""
+  LaunchGateway: true
+  Debug: true
+  IpfsAddress: "http://127.0.0.1:5001"
+  RedisAddress: "46.250.249.195:6379"
+  Endpoint: "http://46.250.249.195:1306"
+  TeeAddress: "http://local_tee_node:1309"
+  IpfsHost: ""
+  RedisPwd: "Cd2n@cess.net"
+  SvcPort: 1306
+  RedisPort: 6379
+
+  #

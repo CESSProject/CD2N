@@ -1,0 +1,3 @@
+user default +@all ~* &* on >cess_network@6379
+user retriever +@all ~* &* on >cess_network@6379
+user provider +subscribe &* on >cd2n.provider
