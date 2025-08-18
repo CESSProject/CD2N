@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/CD2N/CD2N/cacher/utils"
-	"github.com/CD2N/CD2N/sdk/sdkgo/logger"
+	"github.com/CESSProject/go-sdk/logger"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"

@@ -30,7 +30,7 @@ DEFAULT_CONFIG = {
     "chain": {
         "name": "cess-chain",
         "port": "9944",
-        "network": "testnet",
+        "network": "premainnet",
         "configuration file": "/opt/cd2n/chain",
     },
     "redis": {
@@ -43,7 +43,7 @@ DEFAULT_CONFIG = {
     "retriever": {
         "name": "retriever",
         "port": "1306",
-        "network": "testnet",
+        "network": "premainnet",
         "configuration file": "/opt/cd2n/retriever"
     }
 }
@@ -88,7 +88,7 @@ def load_config_from_docker_compose(path: str = "docker-compose.yml") -> dict:
                         "password":DEFAULT_CONFIG[service_name]["password"],
                         "name": service_data.get("container_name", DEFAULT_CONFIG[service_name]["name"]),
                     }
-                case "justicar"| "ipfs":  
+                case "justicar":  
                     new_config[service_name] = {
                         "port": ports,
                         "configuration file": configuration_path,
@@ -118,10 +118,12 @@ def load_config_from_docker_compose(path: str = "docker-compose.yml") -> dict:
         return DEFAULT_CONFIG.copy()
 
 
-def save_config_to_docker_compose(config: dict, path: str = "docker-compose.yml"):
+def save_config_to_docker_compose(config: dict,cfged_services: set, path: str = "docker-compose.yml"):
 
     services = {}
     for service_name, service_config in config.items():
+        if service_name not in cfged_services:
+            continue
         match service_name:
             case "justicar":
                 services[service_name] = {
@@ -372,7 +374,8 @@ class ConfigScreen(Screen):
 
         # Update to the app's global config
         self.app.config[self.service_name] = self.current_config
-        save_config_to_docker_compose(self.app.config)
+        self.app.configured_services.add(self.service_name)
+        # save_config_to_docker_compose(self.app.config)
         copy_config_to_workspace(self.app.config)
         self.app.pop_screen()
 
@@ -407,7 +410,8 @@ class MainMenu(Screen):
             service_name = button_id[:-4]  # cut off "_btn" part
             self.app.push_screen(ConfigScreen(service_name, self.app.config))
         elif button_id == "run_compose":
-            save_config_to_docker_compose(self.app.config)
+            save_config_to_docker_compose(self.app.config,self.app.configured_services)
+            return 
             copy_config_to_workspace(self.app.config)
             try:
                 operate_docker_compose(DockerComposeAction.RUN)
@@ -453,6 +457,7 @@ class CD2N(App):
         """
         self.theme = "gruvbox"
         self.config = load_config_from_docker_compose()
+        self.configured_services=set()
         # copy_config_to_workspace(self.config)
 
     def on_ready(self) -> None:

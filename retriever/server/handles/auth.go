@@ -10,7 +10,7 @@ import (
 
 	"github.com/CD2N/CD2N/retriever/server/auth"
 	"github.com/CD2N/CD2N/retriever/utils"
-	"github.com/CD2N/CD2N/sdk/sdkgo/libs/tsproto"
+	"github.com/CESSProject/go-sdk/libs/tsproto"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"

@@ -12,8 +12,8 @@ import (
 	"github.com/CD2N/CD2N/retriever/libs/client"
 	"github.com/CD2N/CD2N/retriever/libs/task"
 	"github.com/CD2N/CD2N/retriever/utils"
-	"github.com/CD2N/CD2N/sdk/sdkgo/libs/tsproto"
-	"github.com/CD2N/CD2N/sdk/sdkgo/logger"
+	"github.com/CESSProject/go-sdk/libs/tsproto"
+	"github.com/CESSProject/go-sdk/logger"
 	"github.com/pkg/errors"
 )
 

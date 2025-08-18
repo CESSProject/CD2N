@@ -9,9 +9,9 @@ import (
 
 	"github.com/CD2N/CD2N/retriever/config"
 	"github.com/CD2N/CD2N/retriever/node"
-	"github.com/CD2N/CD2N/sdk/sdkgo/chain"
-	"github.com/CD2N/CD2N/sdk/sdkgo/libs/buffer"
-	"github.com/CD2N/CD2N/sdk/sdkgo/logger"
+	"github.com/CESSProject/go-sdk/chain"
+	"github.com/CESSProject/go-sdk/libs/buffer"
+	"github.com/CESSProject/go-sdk/logger"
 	"github.com/pkg/errors"
 )
 

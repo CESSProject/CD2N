@@ -1,8 +1,8 @@
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
-github.com/CD2N/CD2N/sdk/sdkgo v0.0.0-20250716020959-cea237887f08 h1:GV+SkQ7xDeLdlqSliJNCGIR79fc21V2ZNdji+4wR0ls=
-github.com/CD2N/CD2N/sdk/sdkgo v0.0.0-20250716020959-cea237887f08/go.mod h1:iYFnfPrBSqgxKeJqTcIS42CvakO93yyDhE7IKs9E3Tk=
 github.com/CESSProject/cess-crypto/gosdk v0.0.0-20250612080638-1885e7005e8a h1:jqIKyXFJHErB/mIRzbYBTeV34e1SyixPE7vVbAhLem0=
 github.com/CESSProject/cess-crypto/gosdk v0.0.0-20250612080638-1885e7005e8a/go.mod h1:RWR+uTJc9BNWAe+UZyQ1kCjSkzZm1+zqAbNkTpy0UPA=
+github.com/CESSProject/go-sdk v0.1.1 h1:+7j5T/PQ0Yc2TOeNTkOlciSVPXP6afuImQbqZS+ZLAU=
+github.com/CESSProject/go-sdk v0.1.1/go.mod h1:eXSLN2wR8VzIyH94DCTWC/62kOzaBompyVbF/vTDL8A=
 github.com/ChainSafe/go-schnorrkel v1.1.0 h1:rZ6EU+CZFCjB4sHUE1jIu8VDoB/wRKZxoe1tkcO71Wk=
 github.com/ChainSafe/go-schnorrkel v1.1.0/go.mod h1:ABkENxiP+cvjFiByMIZ9LYbRoNNLeBLiakC1XeTFxfE=
 github.com/DataDog/zstd v1.4.5 h1:EndNeuB0l9syBZhut0wns3gV1hL8zX8LIu6ZiVHWLIQ=

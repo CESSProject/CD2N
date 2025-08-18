@@ -13,9 +13,9 @@ import (
 	"github.com/CD2N/CD2N/cacher/client"
 	"github.com/CD2N/CD2N/cacher/config"
 	"github.com/CD2N/CD2N/cacher/manager"
-	"github.com/CD2N/CD2N/sdk/sdkgo/chain/evm"
-	"github.com/CD2N/CD2N/sdk/sdkgo/libs/cache"
-	"github.com/CD2N/CD2N/sdk/sdkgo/logger"
+	"github.com/CESSProject/go-sdk/chain/evm"
+	"github.com/CESSProject/go-sdk/libs/cache"
+	"github.com/CESSProject/go-sdk/logger"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/spf13/cobra"
 )

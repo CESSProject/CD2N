@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/CD2N/CD2N/retriever/node"
-	"github.com/CD2N/CD2N/sdk/sdkgo/libs/buffer"
-	"github.com/CD2N/CD2N/sdk/sdkgo/libs/tsproto"
+	"github.com/CESSProject/go-sdk/libs/buffer"
+	"github.com/CESSProject/go-sdk/libs/tsproto"
 	"github.com/gin-gonic/gin"
 	"github.com/juju/ratelimit"
 )

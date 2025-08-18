@@ -11,9 +11,9 @@ import (
 
 	"github.com/CD2N/CD2N/retriever/config"
 	"github.com/CD2N/CD2N/retriever/utils"
-	"github.com/CD2N/CD2N/sdk/sdkgo/chain"
-	"github.com/CD2N/CD2N/sdk/sdkgo/chain/evm"
-	"github.com/CD2N/CD2N/sdk/sdkgo/libs/tsproto"
+	"github.com/CESSProject/go-sdk/chain"
+	"github.com/CESSProject/go-sdk/chain/evm"
+	"github.com/CESSProject/go-sdk/libs/tsproto"
 	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"

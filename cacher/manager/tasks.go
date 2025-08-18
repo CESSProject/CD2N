@@ -9,8 +9,8 @@ import (
 
 	"github.com/CD2N/CD2N/cacher/client"
 	"github.com/CD2N/CD2N/cacher/config"
-	"github.com/CD2N/CD2N/sdk/sdkgo/chain/evm"
-	"github.com/CD2N/CD2N/sdk/sdkgo/logger"
+	"github.com/CESSProject/go-sdk/chain/evm"
+	"github.com/CESSProject/go-sdk/logger"
 	"github.com/go-redis/redis/v8"
 	"github.com/panjf2000/ants/v2"
 	"github.com/pkg/errors"

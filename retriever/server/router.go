@@ -9,7 +9,7 @@ import (
 	"github.com/CD2N/CD2N/retriever/config"
 	"github.com/CD2N/CD2N/retriever/server/auth"
 	"github.com/CD2N/CD2N/retriever/server/handles"
-	"github.com/CD2N/CD2N/sdk/sdkgo/libs/tsproto"
+	"github.com/CESSProject/go-sdk/libs/tsproto"
 	"github.com/gin-gonic/gin"
 )
 
