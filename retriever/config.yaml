@@ -28,6 +28,7 @@ ServerConfig:
   TeeAddress: "http://local_tee_node:1309"
   IpfsHost: ""
   RedisPwd: "Cd2n@cess.net"
+  JwtKey: ""
   SvcPort: 1306
   RedisPort: 6379
 

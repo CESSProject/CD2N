@@ -59,7 +59,7 @@ func (h *ServerHandle) ClaimFile(c *gin.Context) {
 		return
 	}
 	h.partners.UpdateCacherToken(resp.Token, addr)
-	logger.GetLogger(config.LOG_PROVIDER).Infof("L2 Node %s claim fragments from file %s  success.", resp.Token, resp.Fid)
+	logger.GetLogger(config.LOG_PROVIDER).Infof("L2 Node %s claim fragments from file %s  success.", c.ClientIP(), resp.Fid)
 	c.JSON(http.StatusOK, tsproto.NewResponse(http.StatusOK, "success", resp))
 }
 

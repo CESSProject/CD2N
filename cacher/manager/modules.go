@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/CD2N/CD2N/cacher/client"
 	"github.com/CD2N/CD2N/cacher/config"
 	"github.com/CD2N/CD2N/cacher/utils"
 	"github.com/CESSProject/go-sdk/chain"
@@ -18,13 +19,13 @@ import (
 	"github.com/centrifuge/go-substrate-rpc-client/v4/signature"
 	ecies "github.com/ecies/go/v2"
 	"github.com/go-redis/redis/v8"
+	"github.com/panjf2000/ants/v2"
 	"github.com/pkg/errors"
 )
 
 type RetrieverProvider interface {
 	GetRetriever(key string) (Retriever, bool)
 	ErrorFeedback(key string)
-	RangeRetriever(f func(key string, node Retriever) bool)
 }
 
 // type StoragerProvider interface {
@@ -276,14 +277,14 @@ func (rm *RetrieverManager) GetRetriever(key string) (Retriever, bool) {
 	if !ok {
 		return Retriever{}, ok
 	}
-	node, ok := v.(Retriever)
+	node, ok := v.(*Retriever)
 	if !ok {
 		return Retriever{}, ok
 	}
 	if !node.Available {
 		return Retriever{}, false
 	}
-	return node, true
+	return *node, true
 }
 
 func (rm *RetrieverManager) ErrorFeedback(key string) {
@@ -291,56 +292,55 @@ func (rm *RetrieverManager) ErrorFeedback(key string) {
 	if !ok {
 		return
 	}
-	node, ok := v.(Retriever)
+	node, ok := v.(*Retriever)
 	if !ok {
 		return
 	}
 	node.ErrorCount++
-	if node.ErrorCount >= 3 {
+	if node.ErrorCount >= 15 {
 		node.Available = false
 		select {
 		case node.unsubCh <- struct{}{}:
 		default:
 		}
 	}
-	rm.nodes.Swap(key, node)
 }
 
-func (rm *RetrieverManager) RangeRetriever(f func(key string, node Retriever) bool) {
+func (rm *RetrieverManager) SubscribeRetrievers(ctx context.Context, receiver chan<- *redis.Message, channel ...string) {
 	rm.nodes.Range(func(key, value any) bool {
-		k, ok := key.(string)
+		node, ok := value.(*Retriever)
 		if !ok {
 			return true
 		}
-		node, ok := value.(Retriever)
-		if !ok {
-			return true
+		if node.Available {
+			ants.Submit(func() {
+				node.SubscribeMessage(ctx, receiver, channel...)
+			})
 		}
-		return f(k, node)
+		return true
 	})
 }
 
-func (rm *RetrieverManager) UpdateRetriever(key string, node Retriever) {
-	rm.nodes.Store(key, node)
-}
-
-func (rm *RetrieverManager) LoadRetrievers(cli *evm.CacheProtoContract, conf config.Config) error {
+func (rm *RetrieverManager) LoadRetrievers(cli *evm.CacheProtoContract, conf config.Config, redisAcc, redisPwd string) error {
 	for _, cdn := range conf.Retrievers {
 		if cdn.Account == "" || cdn.Endpoint == "" {
 			continue
 		}
-		node := Retriever{
-			Account:  cdn.Account,
-			Endpoint: cdn.Endpoint,
-			unsubCh:  make(chan struct{}, 1),
-		}
-		ava := CheckNodeAvailable(&node)
-		node.Available = ava
-		actl, ok := rm.nodes.LoadOrStore(cdn.Account, node)
-		if ok {
-			node = actl.(Retriever)
-			if !node.Available && ava {
-				node.Available = true
+
+		if actl, ok := rm.nodes.Load(cdn.Account); ok {
+			if old, ok := actl.(*Retriever); ok && !old.Available {
+				old.Endpoint = cdn.Endpoint
+				old.Available = CheckNodeAvailable(old)
+			}
+		} else {
+			node := &Retriever{
+				Account:  cdn.Account,
+				Endpoint: cdn.Endpoint,
+				unsubCh:  make(chan struct{}, 1),
+			}
+
+			if node.Available = CheckNodeAvailable(node); node.Available {
+				node.redisCli = client.NewRedisClient(node.RedisAddress, redisAcc, redisPwd)
 				rm.nodes.Store(cdn.Account, node)
 			}
 		}
@@ -360,13 +360,23 @@ func (rm *RetrieverManager) LoadRetrievers(cli *evm.CacheProtoContract, conf con
 			//logger.GetLogger(config.LOG_NODE).Error("query cdn node info error ", err.Error())
 			continue
 		}
-		node := Retriever{
-			Account:  addr.Hex(),
-			Endpoint: info.Endpoint,
-			unsubCh:  make(chan struct{}, 1),
+		account := addr.Hex()
+		if actl, ok := rm.nodes.Load(account); ok {
+			if old, ok := actl.(*Retriever); ok && !old.Available {
+				old.Endpoint = info.Endpoint
+				old.Available = CheckNodeAvailable(old)
+			}
+		} else {
+			node := &Retriever{
+				Account:  account,
+				Endpoint: info.Endpoint,
+				unsubCh:  make(chan struct{}, 1),
+			}
+			if node.Available = CheckNodeAvailable(node); node.Available {
+				node.redisCli = client.NewRedisClient(node.RedisAddress, redisAcc, redisPwd)
+				rm.nodes.Store(account, node)
+			}
 		}
-		node.Available = CheckNodeAvailable(&node)
-		rm.nodes.LoadOrStore(node.Account, node)
 		logger.GetLogger(config.LOG_NODE).Infof("load retriever %s on contract", info.Endpoint)
 	}
 
@@ -383,7 +393,6 @@ func (rm *RetrieverManager) LoadRetrievers(cli *evm.CacheProtoContract, conf con
 	for _, oss := range osses {
 		node := Retriever{
 			Endpoint: string(oss.Domain),
-			unsubCh:  make(chan struct{}, 1),
 		}
 		if node.Endpoint == "" {
 			continue
@@ -391,8 +400,20 @@ func (rm *RetrieverManager) LoadRetrievers(cli *evm.CacheProtoContract, conf con
 		if !strings.Contains(node.Endpoint, "http://") && !strings.Contains(node.Endpoint, "https://") {
 			node.Endpoint = fmt.Sprintf("http://%s", node.Endpoint)
 		}
-		node.Available = CheckNodeAvailable(&node)
-		rm.nodes.LoadOrStore(node.Account, node)
+		if node.Available = CheckNodeAvailable(&node); !node.Available {
+			continue
+		}
+		if actl, ok := rm.nodes.Load(node.Account); ok {
+			if old, ok := actl.(*Retriever); ok && !old.Available {
+				old.Endpoint = node.Endpoint
+				old.Available = node.Available
+			}
+		} else {
+			node.unsubCh = make(chan struct{}, 1)
+			node.redisCli = client.NewRedisClient(node.RedisAddress, redisAcc, redisPwd)
+			rm.nodes.Store(node.Account, node)
+		}
+		rm.nodes.Store(node.Account, node)
 		logger.GetLogger(config.LOG_NODE).Infof("load oss %s on chain", oss.Domain)
 	}
 	return nil
@@ -416,7 +437,7 @@ func CheckNodeAvailable(node any) bool {
 		n.IsGateway = info.IsGateway
 		n.RedisAddress = info.RedisAddr
 	}
-	return false
+	return true
 }
 
 // //////////////////////////////

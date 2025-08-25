@@ -214,7 +214,7 @@ func cmd_run_func(cmd *cobra.Command, args []string) {
 			return
 		}
 	}()
-	go taskDispatcher.SubscribeTasksFromRetrievers(ctx, contract, time.Minute*30, "provider", "cd2n.provider")
+	go taskDispatcher.SubscribeTasksFromRetrievers(ctx, contract, time.Hour, "provider", "cd2n.provider")
 
 	cessAccessTaskExecutor, err := manager.NewCessAccessTaskExecutor(
 		conf.SecretKey, cacheModule, taskDispatcher.RetrieverManager, 512,

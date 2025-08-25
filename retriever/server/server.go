@@ -28,17 +28,22 @@ const (
 
 func SetupGin() {
 
-	k, err := utils.GetRandomBytes()
-	if err != nil {
-		log.Fatal(err)
-	}
-	auth.SetupAuth(base64.StdEncoding.EncodeToString(k), int64(time.Hour*72))
 	conf := config.GetConfig()
+	if conf.JwtKey == "" {
+		k, err := utils.GetRandomBytes()
+		if err != nil {
+			log.Fatal(err)
+		}
+		auth.SetupAuth(base64.StdEncoding.EncodeToString(k), int64(time.Hour*72))
+	} else {
+		auth.SetupAuth(conf.JwtKey, int64(time.Hour*72))
+	}
+
 	gin.SetMode(gin.ReleaseMode)
 	log.Println("start init retriever web handles ...")
 	handle := handles.NewServerHandle()
-	err = handle.InitHandlesRuntime(context.Background())
-	if err != nil {
+
+	if err := handle.InitHandlesRuntime(context.Background()); err != nil {
 		log.Fatal(err)
 	}
 	log.Println("init retriever web handles success.")

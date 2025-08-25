@@ -3,11 +3,9 @@ package manager
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"sync"
 	"time"
 
-	"github.com/CD2N/CD2N/cacher/client"
 	"github.com/CD2N/CD2N/cacher/config"
 	"github.com/CESSProject/go-sdk/chain/evm"
 	"github.com/CESSProject/go-sdk/logger"
@@ -87,21 +85,11 @@ func (td *TaskDispatcher) SubscribeTasksFromRetrievers(ctx context.Context, cont
 	ticker := time.NewTicker(interval)
 	conf := config.GetConfig()
 	for {
-		if err := td.LoadRetrievers(contract, conf); err != nil {
-			log.Println("run subscribe task server error", err)
+		if err := td.LoadRetrievers(contract, conf, redisAcc, redisPwd); err != nil {
 			time.Sleep(time.Minute * 2)
 			continue
 		}
-		td.RangeRetriever(func(key string, node Retriever) bool {
-			if node.redisCli == nil {
-				node.redisCli = client.NewRedisClient(node.RedisAddress, redisAcc, redisPwd)
-				td.UpdateRetriever(key, node)
-			}
-			if node.IsAvailable() {
-				ants.Submit(func() { node.SubscribeMessage(ctx, td.taskCh, td.channels...) })
-			}
-			return true
-		})
+		td.SubscribeRetrievers(ctx, td.taskCh, td.channels...)
 		select {
 		case <-ticker.C:
 		case <-ctx.Done():

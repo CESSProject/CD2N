@@ -53,6 +53,7 @@ type ServerConfig struct {
 	Endpoint        string
 	IpfsHost        string
 	RedisPwd        string
+	JwtKey          string
 	SvcPort         int
 }
 
