@@ -225,7 +225,7 @@ func (te *CessAccessTaskExecutor) DataProvideHandle(task *DataProvideTask) {
 	switch task.WorkType {
 	case WORK_CLAIM_DATA:
 		if err := te.ClaimDataFromRetriever(task); err != nil {
-			logger.GetLogger(config.LOG_TASK).Error("failed to process data provision task", err)
+			logger.GetLogger(config.LOG_TASK).Error("failed to process data provision task: ", err)
 			return
 		}
 		if task.Count <= 0 || len(task.Fragments) != task.Count {
@@ -238,19 +238,19 @@ func (te *CessAccessTaskExecutor) DataProvideHandle(task *DataProvideTask) {
 		task.Path = path.Join(te.tempDir, task.Fid, task.Did)
 		task.WorkType = WORK_FETCH_DATA
 		if err := utils.MakeDir(path.Join(te.tempDir, task.Fid)); err != nil {
-			logger.GetLogger(config.LOG_TASK).Error("failed to process data provision task", err)
+			logger.GetLogger(config.LOG_TASK).Error("failed to process data provision task: ", err)
 			return
 		}
 		te.taskCh <- task
 	case WORK_FETCH_DATA:
 		if err := te.FetchDataFromRetriever(task); err != nil {
-			logger.GetLogger(config.LOG_TASK).Error("failed to process data provision task", err)
+			logger.GetLogger(config.LOG_TASK).Error("failed to process data provision task: ", err)
 			return
 		}
 		if task.Storager.Endpoint == "" || task.Storager.Account == "" {
 			storager, err := te.GetMinerEndpoint(uint64(task.Count))
 			if err != nil {
-				logger.GetLogger(config.LOG_TASK).Error("failed to process data provision task", err)
+				logger.GetLogger(config.LOG_TASK).Error("failed to process data provision task: ", err)
 				return
 			}
 			task.Storager = storager
@@ -259,19 +259,19 @@ func (te *CessAccessTaskExecutor) DataProvideHandle(task *DataProvideTask) {
 		te.taskCh <- task
 	case WORK_PUSH_DATA:
 		if err := te.PushDataToStorageNode(task); err != nil {
-			logger.GetLogger(config.LOG_TASK).Error("failed to process data provision task", err)
+			logger.GetLogger(config.LOG_TASK).Error("failed to process data provision task: ", err)
 			return
 		}
 		if err := client.PutData(te.files, task.Did, FileInfo{
 			Storager: task.Storager.Account,
 			Fid:      task.Fid,
 		}); err != nil {
-			logger.GetLogger(config.LOG_TASK).Error("failed to process data provision task", err)
+			logger.GetLogger(config.LOG_TASK).Error("failed to process data provision task: ", err)
 			return
 		}
 		if len(task.Fragments) <= 0 {
 			logger.GetLogger(config.LOG_TASK).Infof(
-				"provision task %s done, distribute to %s, fid: %s", task.Tid, task.Storager.Account, task.Fid,
+				"provision task %s done, distributed to %s, fid: %s", task.Tid, task.Storager.Account, task.Fid,
 			)
 			return
 		}
@@ -397,12 +397,12 @@ func (te *CessAccessTaskExecutor) ClaimDataFromRetriever(task *DataProvideTask) 
 	req.Sign = hex.EncodeToString(sign)
 	u, err := url.JoinPath(task.Addr, tsproto.CLAIM_DATA_URL)
 	if err != nil {
-		return errors.Wrap(err, "cliam data from retriever error")
+		return errors.Wrap(err, "claim data from retriever error")
 	}
 	resp, err := tsproto.ClaimFile(u, req)
 	if err != nil {
 		te.ErrorFeedback(task.Acc)
-		return errors.Wrap(err, "cliam data from retriever error")
+		return errors.Wrap(err, "claim data from retriever error")
 	}
 	task.Token = resp.Token
 	task.Fragments = resp.Fragments

@@ -5,10 +5,12 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/CD2N/CD2N/retriever/config"
 )
 
 const (
-	PROVIDE_TASK_GROUP_NUM  = 12
+	PROVIDE_TASK_GROUP_NUM  = config.FRAGMENTS_NUM + config.PARITY_NUM
 	CALLBACK_CHANNEL_SIZE   = 100000
 	TID_BYTES_LEN           = 12
 	PROVIDE_TASK_CHECK_TIME = time.Minute * 15

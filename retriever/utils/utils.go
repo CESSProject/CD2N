@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"bufio"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdsa"
@@ -258,4 +259,17 @@ func GetDataHash(data ...any) []byte {
 	h := sha256.New()
 	h.Write(fmt.Append([]byte{}, data...))
 	return h.Sum(nil)
+}
+
+func WriteFile(fpath string, data []byte) error {
+	f, err := os.Create(fpath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	b := bufio.NewWriterSize(f, 1*1024*1024)
+	if _, err = b.Write(data); err != nil {
+		return err
+	}
+	return b.Flush()
 }

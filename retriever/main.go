@@ -10,11 +10,14 @@ import (
 	"github.com/CESSProject/go-sdk/logger"
 )
 
+const VERSION = "v0.1.1"
+
 func main() {
 	var confPath string
 	if len(os.Args) >= 2 {
 		confPath = os.Args[1]
 	}
+	log.Println("CODE VERSION:", VERSION)
 	err := config.InitDefaultConfig(confPath)
 	if err != nil {
 		log.Fatal(err)

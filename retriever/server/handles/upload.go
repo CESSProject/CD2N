@@ -96,7 +96,10 @@ func (h *ServerHandle) UploadLocalFile(c *gin.Context) {
 	}
 	defer src.Close()
 
-	finfo, err := h.gateway.PreprocessFile(h.buffer, src, user.Account, territory, filename, encrypt)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 45*time.Second)
+	defer cancel()
+
+	finfo, err := h.gateway.PreprocessFile(ctx, h.buffer, src, user.Account, territory, filename, encrypt)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "upload user file error", err.Error()))
 		return
@@ -133,7 +136,9 @@ func (h *ServerHandle) UploadUserFileTemp(c *gin.Context) {
 	}
 	defer src.Close()
 
-	finfo, err := h.gateway.PreprocessFile(h.buffer, src, pubkey, territory, file.Filename, encrypt)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 45*time.Second)
+	defer cancel()
+	finfo, err := h.gateway.PreprocessFile(ctx, h.buffer, src, pubkey, territory, file.Filename, encrypt)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "upload user file error", err.Error()))
 		return
@@ -174,7 +179,9 @@ func (h *ServerHandle) UploadUserFile(c *gin.Context) {
 	}
 	defer src.Close()
 
-	finfo, err := h.gateway.PreprocessFile(h.buffer, src, user.Account, territory, file.Filename, encrypt)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 45*time.Second)
+	defer cancel()
+	finfo, err := h.gateway.PreprocessFile(ctx, h.buffer, src, user.Account, territory, file.Filename, encrypt)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "upload user file error", err.Error()))
 		return
@@ -190,7 +197,7 @@ func (h *ServerHandle) upload(c *gin.Context, finfo task.FileInfo, async, noProx
 			c.JSON(http.StatusBadRequest, resp)
 			return
 		}
-		err := h.gateway.ProvideFile(context.Background(), h.buffer, time.Hour, finfo, false)
+		err := h.gateway.ProvideFile(context.Background(), h.buffer, h.partners, time.Hour, finfo, false)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, tsproto.NewResponse(response.CODE_UP_ERROR, "upload file error", err.Error()))
 			return
@@ -370,7 +377,9 @@ func (h *ServerHandle) UploadFileParts(c *gin.Context) {
 	}
 	defer f.Close()
 
-	finfo, err := h.gateway.PreprocessFile(h.buffer, f, user.Account, partsInfo.Territory, fname, encrypt)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 45*time.Second)
+	defer cancel()
+	finfo, err := h.gateway.PreprocessFile(ctx, h.buffer, f, user.Account, partsInfo.Territory, fname, encrypt)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "upload user file error", err.Error()))
 		return
@@ -487,46 +496,50 @@ func (h *ServerHandle) AsyncUploadFiles(ctx context.Context) error {
 			continue
 		}
 
-		for _, key := range keys {
-			if err := func(key string) error {
-				if !strings.Contains(key, config.DB_FINFO_PREFIX) {
-					return nil
-				}
-				var box task.AsyncFinfoBox
-				if err := client.GetDataFromRedis(h.partRecord, ctx, key, &box); err != nil {
-					logger.GetLogger(config.LOG_GATEWAY).Info("get file info box from db error ", err)
-					return nil
-				}
+		for _, k := range keys {
+			key := k
+			h.pool.Submit(func() {
+				if err := func(key string) error {
+					if !strings.Contains(key, config.DB_FINFO_PREFIX) {
+						return nil
+					}
+					var box task.AsyncFinfoBox
+					if err := client.GetDataFromRedis(h.partRecord, ctx, key, &box); err != nil {
+						logger.GetLogger(config.LOG_GATEWAY).Info("get file info box from db error ", err)
+						return nil
+					}
 
-				if box.NonProxy {
-					cli, err := h.gateway.GetCessClient()
-					if err != nil {
-						logger.GetLogger(config.LOG_GATEWAY).Error("provide file async error ", err)
+					if box.NonProxy {
+						cli, err := h.gateway.GetCessClient()
+						if err != nil {
+							logger.GetLogger(config.LOG_GATEWAY).Error("provide file async error ", err)
+							return nil
+						}
+						_, err = cli.QueryDealMap(box.Info.Fid, 0)
+						if err != nil {
+							logger.GetLogger(config.LOG_GATEWAY).Error("provide file async error ", err)
+							return nil
+						}
+						if err := h.gateway.ProvideFile(context.Background(), h.buffer, h.partners, time.Hour, box.Info, true); err != nil {
+							logger.GetLogger(config.LOG_GATEWAY).Error("provide file async error ", err)
+							return nil
+						}
+						client.DeleteMessage(h.partRecord, ctx, key)
 						return nil
 					}
-					_, err = cli.QueryDealMap(box.Info.Fid, 0)
-					if err != nil {
+
+					if err := h.gateway.ProvideFile(context.Background(), h.buffer, h.partners, time.Hour, box.Info, false); err != nil {
 						logger.GetLogger(config.LOG_GATEWAY).Error("provide file async error ", err)
-						return nil
-					}
-					if err := h.gateway.ProvideFile(context.Background(), h.buffer, time.Hour, box.Info, true); err != nil {
-						logger.GetLogger(config.LOG_GATEWAY).Error("provide file async error ", err)
-						return nil
+					} else {
+						h.gateway.BatchOffloadingWithFileInfo(box.Info)
 					}
 					client.DeleteMessage(h.partRecord, ctx, key)
 					return nil
+				}(key); err != nil {
+					logger.GetLogger(config.LOG_GATEWAY).Error("async upload files error ", err)
 				}
+			})
 
-				if err := h.gateway.ProvideFile(context.Background(), h.buffer, time.Hour, box.Info, false); err != nil {
-					logger.GetLogger(config.LOG_GATEWAY).Error("provide file async error ", err)
-				} else {
-					h.gateway.BatchOffloadingWithFileInfo(box.Info)
-				}
-				client.DeleteMessage(h.partRecord, ctx, key)
-				return nil
-			}(key); err != nil {
-				logger.GetLogger(config.LOG_GATEWAY).Error("async upload files error ", err)
-			}
 		}
 	}
 }

@@ -3,7 +3,6 @@ package utils
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 
@@ -93,7 +92,6 @@ func RSRestore(outpath string, shardspath []string) error {
 		}
 		shards[k], err = os.ReadFile(v)
 		if err != nil {
-			log.Println("error", err)
 			shards[k] = nil
 		} else {
 			count++

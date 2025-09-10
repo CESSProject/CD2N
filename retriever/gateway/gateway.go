@@ -21,11 +21,20 @@ import (
 	"github.com/CESSProject/go-sdk/chain/evm"
 	"github.com/CESSProject/go-sdk/libs/buffer"
 	"github.com/CESSProject/go-sdk/libs/tsproto"
+	"github.com/CESSProject/go-sdk/logger"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-redis/redis/v8"
 	"github.com/panjf2000/ants/v2"
 	"github.com/pkg/errors"
+)
+
+const (
+	EMPTY_FRAGMENT_HASH = ""
+	DATA_FLAG_EMPTY     = "empty"
+	DATA_FLAG_ORIGIN    = "origin"
+	DATA_FLAG_NORMAL    = "normal"
+	DATA_FLAG_RAW       = "raw"
 )
 
 type Status struct {
@@ -49,8 +58,19 @@ type Cd2nNode struct {
 	Available    bool   `json:"available"`
 }
 
+type _PreProcessJob struct {
+	filePath  string
+	acc       []byte
+	territory string
+	fileName  string
+	encrypt   bool
+	res       chan task.FileInfo
+	err       chan error
+}
+
 type Gateway struct {
 	nodeAcc         string
+	preprocessChan  chan _PreProcessJob
 	redisCli        *redis.Client
 	cessCli         *chain.Client
 	pool            *ants.Pool
@@ -64,7 +84,7 @@ type Gateway struct {
 }
 
 func NewGateway(redisCli *redis.Client, contract *evm.CacheProtoContract, cacher *buffer.FileBuffer) (*Gateway, error) {
-	pool, err := ants.NewPool(256)
+	pool, err := ants.NewPool(4)
 	if err != nil {
 		return nil, errors.Wrap(err, "new gateway error")
 	}
@@ -86,6 +106,7 @@ func NewGateway(redisCli *redis.Client, contract *evm.CacheProtoContract, cacher
 			Retried: &atomic.Int64{},
 			Fids:    &sync.Map{},
 		},
+		preprocessChan:  make(chan _PreProcessJob, 512),
 		pool:            pool,
 		dlPool:          dlPool,
 		FileCacher:      cacher,
@@ -265,9 +286,11 @@ func (g *Gateway) ProcessFile(buf *buffer.FileBuffer, name, fpath, territory str
 	fbuf := make([]byte, config.SEGMENT_SIZE)
 	for i := int64(0); i < count; i++ {
 		hash.Reset()
+		smallDataFlag := false
 		if n, err := f.Read(fbuf); err != nil {
 			return task.FileInfo{}, errors.Wrap(err, "process file error")
 		} else if n < config.SEGMENT_SIZE {
+			smallDataFlag = n <= config.FRAGMENT_SIZE
 			if err = utils.FillZeroData(fbuf[n:]); err != nil {
 				return task.FileInfo{}, errors.Wrap(err, "process file error")
 			}
@@ -275,20 +298,26 @@ func (g *Gateway) ProcessFile(buf *buffer.FileBuffer, name, fpath, territory str
 		var fragments []string
 		hash.Write(fbuf)
 		segment := hex.EncodeToString(hash.Sum(nil))
+		index := 0
 		finfo.Segments = append(finfo.Segments, segment)
 		if err = utils.ReedSolomonWithHandle(fbuf, func(shard []byte) error {
+			index++
 			hash.Reset()
 			hash.Write(shard)
 			fragment := hex.EncodeToString(hash.Sum(nil))
+			fragments = append(fragments, fragment)
+			if index <= config.FRAGMENTS_NUM || fragment == EMPTY_FRAGMENT_HASH || smallDataFlag {
+				// Optimization: do not save fragment data of empty, original, or small file
+				return nil
+			}
 			fragPath, err := buf.JoinPath(baseDir, fragment)
 			if err != nil {
 				return err
 			}
-			if err = os.WriteFile(fragPath, shard, 0755); err != nil {
+			if err = utils.WriteFile(fragPath, shard); err != nil {
 				return err
 			}
 			buf.AddData(fragment, fragPath)
-			fragments = append(fragments, fragment)
 			return nil
 		}); err != nil {
 			return task.FileInfo{}, errors.Wrap(err, "process file error")
@@ -369,11 +398,12 @@ func (g *Gateway) CreateFlashStorageOrder(owner []byte, fid, filename, territory
 	return hash, nil
 }
 
-func (g *Gateway) PreprocessFile(b *buffer.FileBuffer, file io.Reader, acc []byte, territory, filename string, encrypt bool) (task.FileInfo, error) {
+func (g *Gateway) PreprocessFile(ctx context.Context, b *buffer.FileBuffer, file io.Reader, acc []byte, territory, filename string, encrypt bool) (task.FileInfo, error) {
 	var (
-		finfo   task.FileInfo
-		capsule *gosdk.Capsule
+		finfo task.FileInfo
+		err   error
 	)
+
 	if len(filename) > 63 {
 		filename = filename[len(filename)-63:]
 	}
@@ -386,47 +416,87 @@ func (g *Gateway) PreprocessFile(b *buffer.FileBuffer, file io.Reader, acc []byt
 	if err = SaveDataToBuf(file, fpath); err != nil {
 		return finfo, errors.Wrap(err, "pre process file error")
 	}
-	if encrypt {
-		rpath, err := b.NewBufPath(
-			hex.EncodeToString(
-				utils.CalcSha256Hash(acc, []byte(territory+filename), []byte("encrypt")),
-			),
-		)
-		if err != nil {
-			return finfo, errors.Wrap(err, "pre process file error")
-		}
-		if capsule, err = g.cm.EncryptFile(fpath, rpath, acc); err != nil {
-			return finfo, errors.Wrap(err, "pre process file error")
-		}
-		if err := os.RemoveAll(fpath); err != nil {
-			return finfo, errors.Wrap(err, "pre process file error")
-		}
-		fpath = rpath
-	}
 
-	finfo, err = g.ProcessFile(b, filename, fpath, territory, acc)
-	if err != nil {
+	job := _PreProcessJob{
+		acc:       acc,
+		fileName:  filename,
+		territory: territory,
+		filePath:  fpath,
+		encrypt:   encrypt,
+		res:       make(chan task.FileInfo, 1),
+		err:       make(chan error, 1),
+	}
+	select {
+	case g.preprocessChan <- job:
+	case <-ctx.Done():
+		return finfo, errors.Wrap(errors.New("preprocessing timeout"), "pre process file error")
+	}
+	select {
+	case finfo = <-job.res:
+		return finfo, nil
+	case err = <-job.err:
 		return finfo, errors.Wrap(err, "pre process file error")
+	case <-ctx.Done():
+		return finfo, errors.Wrap(errors.New("preprocessing timeout"), "pre process file error")
 	}
-	cachePath, err := g.FileCacher.NewBufPath(finfo.Fid)
-	if err != nil {
-		return finfo, errors.Wrap(err, "pre process file error")
-	}
+}
 
-	err = os.Rename(fpath, cachePath)
-	if err != nil {
-		return finfo, errors.Wrap(err, "pre process file error")
-	}
+func (g *Gateway) PreprocessDataServer(ctx context.Context, b *buffer.FileBuffer) {
+	for jb := range g.preprocessChan {
+		pjob := jb
+		if err := g.pool.Submit(func() {
+			var capsule *gosdk.Capsule
+			if pjob.encrypt {
+				rpath, err := b.NewBufPath(
+					hex.EncodeToString(
+						utils.CalcSha256Hash(pjob.acc, []byte(pjob.territory+pjob.fileName), []byte("encrypt")),
+					),
+				)
+				if err != nil {
+					pjob.err <- err
+					return
+				}
+				if capsule, err = g.cm.EncryptFile(pjob.filePath, rpath, pjob.acc); err != nil {
+					pjob.err <- err
+					return
+				}
+				if err := os.RemoveAll(pjob.filePath); err != nil {
+					pjob.err <- err
+					return
+				}
+				pjob.filePath = rpath
+			}
 
-	g.FileCacher.AddData(finfo.Fid, buffer.CatNamePath(filename, cachePath))
+			finfo, err := g.ProcessFile(b, pjob.fileName, pjob.filePath, pjob.territory, pjob.acc)
+			if err != nil {
+				pjob.err <- err
+				return
+			}
+			cachePath, err := g.FileCacher.NewBufPath(finfo.Fid)
+			if err != nil {
+				pjob.err <- err
+				return
+			}
 
-	if encrypt && capsule != nil {
-		if err = g.cm.SaveCapsule(finfo.Fid, capsule); err != nil {
-			return finfo, errors.Wrap(err, "pre process file error")
+			err = os.Rename(pjob.filePath, cachePath)
+			if err != nil {
+				pjob.err <- err
+				return
+			}
+
+			g.FileCacher.AddData(finfo.Fid, buffer.CatNamePath(pjob.fileName, cachePath))
+
+			if pjob.encrypt && capsule != nil {
+				if err = g.cm.SaveCapsule(finfo.Fid, capsule); err != nil {
+					pjob.err <- err
+					return
+				}
+			}
+			pjob.res <- finfo
+		}); err != nil {
+			logger.GetLogger(config.LOG_GATEWAY).Error("an error occurred while performing data preprocessing ", err)
 		}
 	}
-
-	return finfo, nil
 }
 
 func getFileHash(fid string) chain.FileHash {

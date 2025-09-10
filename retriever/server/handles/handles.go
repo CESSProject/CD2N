@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
+	"github.com/panjf2000/ants/v2"
 	"github.com/pkg/errors"
 	"github.com/vedhavyas/go-subkey"
 	"golang.org/x/crypto/blake2b"
@@ -37,6 +38,7 @@ type ServerHandle struct {
 	gateway     *gateway.Gateway
 	buffer      *buffer.FileBuffer
 	Ac          *AccessController
+	pool        *ants.Pool
 	partRecord  *redis.Client //*leveldb.DB
 	filepartMap *sync.Map
 	ossPubkey   []byte
@@ -61,10 +63,15 @@ type PartsInfo struct {
 	UpdateDate time.Time `json:"update_date,omitempty"`
 }
 
-func NewServerHandle() *ServerHandle {
+func NewServerHandle() (*ServerHandle, error) {
+	pool, err := ants.NewPool(64)
+	if err != nil {
+		return nil, errors.Wrap(err, "new server handle error")
+	}
 	return &ServerHandle{
 		filepartMap: &sync.Map{},
-	}
+		pool:        pool,
+	}, nil
 }
 
 func (h *ServerHandle) InitHandlesRuntime(ctx context.Context) error {
@@ -215,6 +222,8 @@ func (h *ServerHandle) InitHandlesRuntime(ctx context.Context) error {
 			log.Fatal("run providing task checker error", err)
 		}
 	}()
+
+	go h.gateway.PreprocessDataServer(ctx, h.buffer)
 
 	go func() {
 		err := h.AsyncUploadFiles(ctx)

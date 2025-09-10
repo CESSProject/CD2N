@@ -41,7 +41,10 @@ func SetupGin() {
 
 	gin.SetMode(gin.ReleaseMode)
 	log.Println("start init retriever web handles ...")
-	handle := handles.NewServerHandle()
+	handle, err := handles.NewServerHandle()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	if err := handle.InitHandlesRuntime(context.Background()); err != nil {
 		log.Fatal(err)

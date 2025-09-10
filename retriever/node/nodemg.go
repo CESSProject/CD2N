@@ -151,6 +151,14 @@ func (nm *NodeManager) LoadRetriever(addr string) (Retriever, bool) {
 	return r, ok
 }
 
+func (nm *NodeManager) GetCachersNum() int {
+	return int(nm.cacherNum.Load())
+}
+
+func (nm *NodeManager) GetStoragersNum() int {
+	return int(nm.activeStorageNodes.Load())
+}
+
 func (nm *NodeManager) LoadAllRetrievers(limit int) []Retriever {
 	nm.lock.RLock()
 	defer nm.lock.RUnlock()
@@ -191,6 +199,7 @@ func (nm *NodeManager) updateCachers() {
 	for key, cacher := range nm.activeCachers {
 		if cacher.DistFailedTimes*100/(cacher.DistTimes+1) >= 60 {
 			delete(nm.activeCachers, key)
+			nm.cacherNum.Add(-1)
 			nm.activeStorageNodes.Add(-int32(len(cacher.StorageNodes)))
 		}
 	}
@@ -234,7 +243,10 @@ func (nm *NodeManager) SaveOrUpdateCacher(pubkey []byte, extIp string, storageNo
 	nm.lock.Lock()
 	defer nm.lock.Unlock()
 
-	cacher := nm.activeCachers[addr]
+	cacher, ok := nm.activeCachers[addr]
+	if !ok {
+		nm.cacherNum.Add(1)
+	}
 	nm.activeStorageNodes.Add(-int32(len(cacher.StorageNodes)))
 	cacher.Account = addr
 	cacher.ExtIp = extIp

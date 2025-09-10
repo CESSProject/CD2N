@@ -56,22 +56,22 @@ func (te *OffloadingTaskExecutor) ClaimDataFromRetriever(task Task) error {
 	req.Sign = hex.EncodeToString(sign)
 	u, err := url.JoinPath(task.Addr, tsproto.CLAIM_DATA_URL)
 	if err != nil {
-		return errors.Wrap(err, "cliam offloading data from gateway error")
+		return errors.Wrap(err, "claim offloading data from gateway error")
 	}
 	data, did, err := tsproto.ClaimOffloadingData(u, req)
 	if err != nil {
-		return errors.Wrap(err, "cliam offloading data from gateway error")
+		return errors.Wrap(err, "claim offloading data from gateway error")
 	}
 	if strings.Trim(did, " ") == "" {
-		return errors.Wrap(err, "cliam offloading data from gateway error")
+		return errors.Wrap(err, "claim offloading data from gateway error")
 	}
 	f, err := os.Create(path.Join(te.tempDir, did))
 	if err != nil {
-		return errors.Wrap(err, "cliam offloading data from gateway error")
+		return errors.Wrap(err, "claim offloading data from gateway error")
 	}
 	defer f.Close()
 	if n, err := f.Write(data); err != nil {
-		return errors.Wrap(err, "cliam offloading data from gateway error")
+		return errors.Wrap(err, "claim offloading data from gateway error")
 	} else {
 		te.dataCache.AddWithData(task.Did, path.Join(te.tempDir, did), int64(n))
 	}

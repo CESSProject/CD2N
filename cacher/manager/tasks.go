@@ -55,7 +55,7 @@ func NewTaskDispatcher(wqLen int) (*TaskDispatcher, error) {
 	if wqLen <= 0 || wqLen > 1024 {
 		wqLen = 1024
 	}
-	pool, err := ants.NewPool(128)
+	pool, err := ants.NewPool(512, ants.WithNonblocking(true))
 	if err != nil {
 		return nil, errors.Wrap(err, "new task dispatcher error")
 	}
@@ -86,6 +86,7 @@ func (td *TaskDispatcher) SubscribeTasksFromRetrievers(ctx context.Context, cont
 	conf := config.GetConfig()
 	for {
 		if err := td.LoadRetrievers(contract, conf, redisAcc, redisPwd); err != nil {
+			logger.GetLogger(config.LOG_NODE).Error(errors.Wrap(err, "load retrievers error"))
 			time.Sleep(time.Minute * 2)
 			continue
 		}

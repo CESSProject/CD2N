@@ -66,11 +66,14 @@ func (n *Retriever) SubscribeMessage(ctx context.Context, receiver chan<- *redis
 		n.subscribing = &atomic.Bool{}
 	}
 	if n.redisCli == nil || n.subscribing.Load() || !n.subscribing.CompareAndSwap(false, true) {
+		logger.GetLogger(config.LOG_NODE).Error("subscribe error ", n.redisCli, " ", n.subscribing.Load())
 		return
 	}
 	sub := n.redisCli.Subscribe(ctx, channel...)
+
 	defer sub.Close()
 	ch := sub.Channel()
+	logger.GetLogger(config.LOG_NODE).Info("subscribe to ", n.Endpoint)
 	for {
 		select {
 		case <-n.unsubCh:
@@ -153,7 +156,7 @@ func (sm *StoragersManager) GetMinerEndpoint(dCount uint64) (tsproto.StorageNode
 	}
 	ep.Account = target.Account
 	ep.Endpoint = target.Endpoint
-	logger.GetLogger(config.LOG_TASK).Infof("select miner %d,total miners %d", sm.index, len(sm.storagers))
+	logger.GetLogger(config.LOG_TASK).Infof("selected miner %s, index:%d, total miners %d", ep.Account, sm.index, len(sm.storagers))
 	sm.index = (sm.index + 1) % len(sm.storagers)
 	return ep, nil
 }
@@ -297,7 +300,7 @@ func (rm *RetrieverManager) ErrorFeedback(key string) {
 		return
 	}
 	node.ErrorCount++
-	if node.ErrorCount >= 15 {
+	if node.ErrorCount >= 2000 {
 		node.Available = false
 		select {
 		case node.unsubCh <- struct{}{}:
@@ -343,21 +346,21 @@ func (rm *RetrieverManager) LoadRetrievers(cli *evm.CacheProtoContract, conf con
 				node.redisCli = client.NewRedisClient(node.RedisAddress, redisAcc, redisPwd)
 				rm.nodes.Store(cdn.Account, node)
 			}
+			logger.GetLogger(config.LOG_NODE).Infof("load retriever %s in local config", cdn.Endpoint)
 		}
-		logger.GetLogger(config.LOG_NODE).Infof("load retriever %s in local config", cdn.Endpoint)
 	}
 	var index int64
 	//load retriever node on contract
 	for {
 		addr, err := cli.QueryCdnL1NodeByIndex(index)
 		if err != nil {
-			//logger.GetLogger(config.LOG_NODE).Error("query cdn node info error ", err.Error())
+			logger.GetLogger(config.LOG_NODE).Error("query cdn node info error ", err.Error())
 			break
 		}
 		index++
 		info, err := cli.QueryRegisterInfo(addr)
 		if err != nil {
-			//logger.GetLogger(config.LOG_NODE).Error("query cdn node info error ", err.Error())
+			logger.GetLogger(config.LOG_NODE).Error("query cdn node info error ", err.Error())
 			continue
 		}
 		account := addr.Hex()
@@ -376,14 +379,13 @@ func (rm *RetrieverManager) LoadRetrievers(cli *evm.CacheProtoContract, conf con
 				node.redisCli = client.NewRedisClient(node.RedisAddress, redisAcc, redisPwd)
 				rm.nodes.Store(account, node)
 			}
+			logger.GetLogger(config.LOG_NODE).Infof("load retriever %s on contract", info.Endpoint)
 		}
-		logger.GetLogger(config.LOG_NODE).Infof("load retriever %s on contract", info.Endpoint)
 	}
 
 	//load retriever node on chain
 	chainCli, err := chain.NewLightCessClient("", config.GetConfig().Rpcs)
 	if err != nil {
-		logger.GetLogger(config.LOG_NODE).Error(errors.Wrap(err, "load retrievers error"))
 		return errors.Wrap(err, "load retrievers error")
 	}
 	osses, err := chainCli.QueryAllOss(0)
@@ -391,7 +393,7 @@ func (rm *RetrieverManager) LoadRetrievers(cli *evm.CacheProtoContract, conf con
 		return errors.Wrap(err, "load oss nodes error")
 	}
 	for _, oss := range osses {
-		node := Retriever{
+		node := &Retriever{
 			Endpoint: string(oss.Domain),
 		}
 		if node.Endpoint == "" {
@@ -400,7 +402,7 @@ func (rm *RetrieverManager) LoadRetrievers(cli *evm.CacheProtoContract, conf con
 		if !strings.Contains(node.Endpoint, "http://") && !strings.Contains(node.Endpoint, "https://") {
 			node.Endpoint = fmt.Sprintf("http://%s", node.Endpoint)
 		}
-		if node.Available = CheckNodeAvailable(&node); !node.Available {
+		if node.Available = CheckNodeAvailable(node); !node.Available {
 			continue
 		}
 		if actl, ok := rm.nodes.Load(node.Account); ok {
@@ -412,9 +414,8 @@ func (rm *RetrieverManager) LoadRetrievers(cli *evm.CacheProtoContract, conf con
 			node.unsubCh = make(chan struct{}, 1)
 			node.redisCli = client.NewRedisClient(node.RedisAddress, redisAcc, redisPwd)
 			rm.nodes.Store(node.Account, node)
+			logger.GetLogger(config.LOG_NODE).Infof("load oss %s on chain", oss.Domain)
 		}
-		rm.nodes.Store(node.Account, node)
-		logger.GetLogger(config.LOG_NODE).Infof("load oss %s on chain", oss.Domain)
 	}
 	return nil
 }

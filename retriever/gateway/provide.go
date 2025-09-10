@@ -23,6 +23,13 @@ import (
 	"github.com/pkg/errors"
 )
 
+type FragmentInfo struct {
+	DataFlag string
+	FilePath string
+	SegIdx   int
+	FragIdx  int
+}
+
 type FileRequest struct {
 	Pubkey    []byte `json:"pubkey"`
 	Fid       string `json:"fid"`
@@ -40,7 +47,12 @@ type Statistics interface {
 	StatTimes(id string)
 }
 
-func (g *Gateway) ProvideFile(ctx context.Context, buffer *buffer.FileBuffer, exp time.Duration, info task.FileInfo, nonProxy bool) error {
+type NodeInfoGetter interface {
+	GetCachersNum() int
+	GetStoragersNum() int
+}
+
+func (g *Gateway) ProvideFile(ctx context.Context, buffer *buffer.FileBuffer, gatter NodeInfoGetter, exp time.Duration, info task.FileInfo, nonProxy bool) error {
 	if _, ok := g.pstats.Fids.LoadOrStore(info.Fid, struct{}{}); ok {
 		return errors.Wrap(errors.New("file is being processed"), "provide file error")
 	}
@@ -96,10 +108,29 @@ func (g *Gateway) ProvideFile(ctx context.Context, buffer *buffer.FileBuffer, ex
 		return errors.Wrap(err, "provide file error")
 	}
 
-	if err = client.PublishMessage(g.redisCli, ctx, client.CHANNEL_PROVIDE, ftask); err != nil {
+	if err = g.PublishMessage(ctx, gatter, client.CHANNEL_PROVIDE, ftask); err != nil {
 		return errors.Wrap(err, "provide file error")
 	}
 	g.pstats.Ongoing.Add(1)
+	return nil
+}
+
+func (g *Gateway) PublishMessage(ctx context.Context, gatter NodeInfoGetter, channel string, data any) error {
+	cacherNum := gatter.GetCachersNum()
+	storagersNum := gatter.GetStoragersNum()
+	total := config.FRAGMENTS_NUM + config.PARITY_NUM
+
+	if err := client.PublishMessage(g.redisCli, ctx, channel, data); err != nil {
+		return err
+	}
+	// Increase the number of task releases when the number of cache nodes is insufficient
+	if cacherNum+1 <= total && cacherNum > 0 && storagersNum >= total {
+		for i := 0; i < total-cacherNum-1; i++ {
+			if err := client.PublishMessage(g.redisCli, ctx, channel, data); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
@@ -172,34 +203,58 @@ func (g *Gateway) ClaimFile(ctx context.Context, req tsproto.FileRequest) (FileR
 	return resp, nil
 }
 
-func (g *Gateway) FetchFile(ctx context.Context, fid, did, token string) (string, error) {
-	var fpath string
+func (g *Gateway) FetchFile(ctx context.Context, fid, token string) (FragmentInfo, error) {
+	var info FragmentInfo
 	if _, ok := g.pstats.Fids.LoadOrStore(fid, struct{}{}); !ok {
-		return fpath, errors.Wrap(errors.New("wrong file id"), "fetch file error")
+		return info, errors.Wrap(errors.New("wrong file id"), "fetch file error")
 	}
 	g.keyLock.Lock(fid)
 	defer g.keyLock.Unlock(fid)
 	var task task.ProvideTask
 	if err := g.GetProvideTask(fid, &task); err != nil {
-		return fpath, errors.Wrap(err, "fetch file error")
+		return info, errors.Wrap(err, "fetch file error")
 	}
 	subTask, ok := task.SubTasks[token]
 	if !ok {
-		return fpath, errors.Wrap(errors.New("subtask not found"), "fetch file error")
+		return info, errors.Wrap(errors.New("subtask not found"), "fetch file error")
 	}
 	if subTask.Index == task.GroupSize {
-		return fpath, errors.Wrap(errors.New("subtask done"), "fetch file error")
+		return info, errors.Wrap(errors.New("subtask done"), "fetch file error")
 	}
-	fpath = filepath.Join(task.BaseDir, task.Fragments[subTask.Index][subTask.GroupId])
-	if _, err := os.Stat(fpath); err != nil {
-		return fpath, errors.Wrap(errors.New("the data has expired"), "fetch file error")
+
+	fragment := task.Fragments[subTask.Index][subTask.GroupId]
+	item := g.FileCacher.GetData(fid)
+	_, fpath := buffer.SplitNamePath(item.Value)
+
+	if fragment == EMPTY_FRAGMENT_HASH {
+		info.DataFlag = DATA_FLAG_EMPTY
+	} else if subTask.Index == task.GroupSize-1 &&
+		task.FileSize%int64(task.GroupSize) <= config.FRAGMENT_SIZE {
+		info.DataFlag = DATA_FLAG_RAW
+		info.SegIdx = subTask.Index
+		info.FilePath = fpath
+	} else {
+		if subTask.GroupId < config.FRAGMENTS_NUM {
+			info.DataFlag = DATA_FLAG_ORIGIN
+			info.SegIdx = subTask.Index
+			info.FragIdx = subTask.GroupId
+			info.FilePath = fpath
+		} else {
+			info.DataFlag = DATA_FLAG_NORMAL
+			info.FilePath = filepath.Join(task.BaseDir, task.Fragments[subTask.Index][subTask.GroupId])
+		}
+	}
+	if info.FilePath != "" {
+		if _, err := os.Stat(info.FilePath); err != nil {
+			return info, errors.Wrap(errors.New("the data has expired"), "fetch file error")
+		}
 	}
 	subTask.Index++
 	task.SubTasks[token] = subTask
 	if err := g.PutProvideTask(fid, task); err != nil {
-		return fpath, errors.Wrap(err, "fetch file error")
+		return info, errors.Wrap(err, "fetch file error")
 	}
-	return fpath, nil
+	return info, nil
 }
 
 func (g *Gateway) ProvideTaskChecker(ctx context.Context, buffer *buffer.FileBuffer, stat Statistics) error {
@@ -221,10 +276,13 @@ func (g *Gateway) checker(ctx context.Context, buffer *buffer.FileBuffer, stat S
 	if err != nil {
 		return errors.Wrap(err, "check provide task error")
 	}
-	for _, key := range keys {
+	for idx, key := range keys {
 		select {
 		case <-ctx.Done():
 		default:
+		}
+		if (idx+1)%512 == 0 {
+			time.Sleep(time.Millisecond * 1500)
 		}
 		if err := func(key string) error {
 			select {
@@ -340,7 +398,7 @@ func TaskNeedToBeGC(ftask task.ProvideTask) bool {
 		return true
 	}
 	for _, v := range ftask.SubTasks {
-		if v.Index < ftask.GroupSize {
+		if v.Index < ftask.GroupSize && v.GroupId < config.FRAGMENTS_NUM {
 			fpath := filepath.Join(ftask.BaseDir, ftask.Fragments[v.Index][v.GroupId])
 			if _, err := os.Stat(fpath); err != nil {
 				return true
@@ -353,6 +411,9 @@ func TaskNeedToBeGC(ftask task.ProvideTask) bool {
 func TaskGc(buffer *buffer.FileBuffer, ftask task.ProvideTask) {
 	for i := range ftask.Fragments {
 		for j := range ftask.Fragments[i] {
+			if j < config.FRAGMENTS_NUM {
+				continue
+			}
 			fpath := filepath.Join(ftask.BaseDir, ftask.Fragments[i][j])
 			buffer.RemoveData(fpath)
 		}
