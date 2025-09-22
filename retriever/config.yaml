@@ -32,4 +32,14 @@ ServerConfig:
   SvcPort: 1306
   RedisPort: 6379
 
-  #
+GatewayConfig:
+  UploadThreadNum: 24 # Default 24
+  DownloadThreadNum: 256 # Default 256
+  UploadChannelSize: 512 # Default 512
+
+AlertConfig:
+  AlertHook: ""
+  AlertName: ""
+  Region: ""
+  Maintainer: ""
+  Url: ""

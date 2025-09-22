@@ -15,6 +15,9 @@ import (
 )
 
 const (
+	MIB                       = 1024 * 1024
+	FRAGMENT_SIZE             = 8 * MIB
+	SEGMENT_SIZE              = 32 * MIB
 	DEFAULT_TASK_CHANNEL_SIZE = 10240
 	TIME_LAYOUT               = "2006/01/02 15:04:05"
 )

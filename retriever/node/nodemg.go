@@ -205,6 +205,13 @@ func (nm *NodeManager) updateCachers() {
 	}
 }
 
+func (nm *NodeManager) AutoUpdateCachersServer() {
+	ticker := time.NewTicker(time.Hour)
+	for range ticker.C {
+		nm.updateCachers()
+	}
+}
+
 func (nm *NodeManager) SavedCacher(addr string) bool {
 	nm.lock.RLock()
 	defer nm.lock.RUnlock()

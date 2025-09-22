@@ -26,11 +26,13 @@ func (h *ServerHandle) GenToken(c *gin.Context) {
 	acc := c.PostForm("account")
 	msg := c.PostForm("message")
 	sign := c.PostForm("sign")
+	exp := c.PostForm("exp")
 	if acc == "" || msg == "" || sign == "" {
 		resp := tsproto.NewResponse(http.StatusBadRequest, "login error", "bad request params")
 		c.JSON(resp.Code, resp)
 		return
 	}
+	expireAt, _ := strconv.ParseInt(exp, 10, 64)
 	//check message
 	unix, err := strconv.ParseInt(msg, 10, 64)
 	if err != nil {
@@ -49,7 +51,7 @@ func (h *ServerHandle) GenToken(c *gin.Context) {
 		c.JSON(resp.Code, resp)
 		return
 	}
-	token, err := auth.Jwth().GenerateToken(auth.UserInfo{Account: account})
+	token, err := auth.Jwth().GenerateToken(auth.UserInfo{Account: account}, time.Duration(expireAt))
 	if err != nil {
 		resp := tsproto.NewResponse(http.StatusInternalServerError, "login error", err.Error())
 		c.JSON(resp.Code, resp)

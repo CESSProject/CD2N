@@ -8,19 +8,21 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/CD2N/CD2N/retriever/config"
+	"github.com/CD2N/CD2N/retriever/libs/alert"
 	"github.com/CD2N/CD2N/retriever/libs/client"
 	"github.com/CD2N/CD2N/retriever/libs/task"
-	"github.com/CD2N/CD2N/retriever/utils"
 	"github.com/CESSProject/cess-crypto/gosdk"
 	"github.com/CESSProject/go-sdk/chain"
 	"github.com/CESSProject/go-sdk/chain/evm"
 	"github.com/CESSProject/go-sdk/libs/buffer"
 	"github.com/CESSProject/go-sdk/libs/tsproto"
+	"github.com/CESSProject/go-sdk/libs/utils"
 	"github.com/CESSProject/go-sdk/logger"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -30,7 +32,7 @@ import (
 )
 
 const (
-	EMPTY_FRAGMENT_HASH = ""
+	EMPTY_FRAGMENT_HASH = "2daeb1f36095b44b318410b3f4e8b5d989dcc7bb023d1426c492dab0a3053e74"
 	DATA_FLAG_EMPTY     = "empty"
 	DATA_FLAG_ORIGIN    = "origin"
 	DATA_FLAG_NORMAL    = "normal"
@@ -71,6 +73,7 @@ type _PreProcessJob struct {
 type Gateway struct {
 	nodeAcc         string
 	preprocessChan  chan _PreProcessJob
+	alarm           alert.AlertHandler
 	redisCli        *redis.Client
 	cessCli         *chain.Client
 	pool            *ants.Pool
@@ -78,17 +81,23 @@ type Gateway struct {
 	contract        *evm.CacheProtoContract
 	FileCacher      *buffer.FileBuffer
 	cm              *CryptoModule
+	txPool          *ants.Pool
 	dlPool          *ants.Pool
 	offloadingQueue chan DataUnit
 	keyLock         *task.EasyKeyLock
 }
 
 func NewGateway(redisCli *redis.Client, contract *evm.CacheProtoContract, cacher *buffer.FileBuffer) (*Gateway, error) {
-	pool, err := ants.NewPool(4)
+	conf := config.GetConfig()
+	pool, err := ants.NewPool(conf.UploadThreadNum)
 	if err != nil {
 		return nil, errors.Wrap(err, "new gateway error")
 	}
-	dlPool, err := ants.NewPool(256)
+	dlPool, err := ants.NewPool(conf.DownloadThreadNum)
+	if err != nil {
+		return nil, errors.Wrap(err, "new gateway error")
+	}
+	txPool, err := ants.NewPool(500)
 	if err != nil {
 		return nil, errors.Wrap(err, "new gateway error")
 	}
@@ -100,15 +109,17 @@ func NewGateway(redisCli *redis.Client, contract *evm.CacheProtoContract, cacher
 		nodeAcc:  contract.Node.Hex(),
 		redisCli: redisCli,
 		contract: contract,
+		alarm:    alert.DefaultAlarm{},
 		pstats: &task.ProvideStat{
 			Ongoing: &atomic.Int64{},
 			Done:    &atomic.Int64{},
 			Retried: &atomic.Int64{},
 			Fids:    &sync.Map{},
 		},
-		preprocessChan:  make(chan _PreProcessJob, 512),
+		preprocessChan:  make(chan _PreProcessJob, conf.UploadChannelSize),
 		pool:            pool,
 		dlPool:          dlPool,
+		txPool:          txPool,
 		FileCacher:      cacher,
 		cm:              cm,
 		offloadingQueue: make(chan DataUnit, 98304),
@@ -119,6 +130,11 @@ func NewGateway(redisCli *redis.Client, contract *evm.CacheProtoContract, cacher
 		return nil, errors.Wrap(err, "new gateway error")
 	}
 	return gateway, nil
+}
+
+func (g *Gateway) Register(handler alert.AlertHandler) {
+	//handler.Alert("info", "The Lark alarm module has been registered with the gateway.")
+	g.alarm = handler
 }
 
 func (g *Gateway) GatewayStatus() Status {
@@ -337,6 +353,7 @@ func (g *Gateway) CreateStorageOrder(info task.FileInfo) (string, error) {
 	var (
 		segments []chain.SegmentList
 		user     chain.UserBrief
+		hash     string
 	)
 	for i, v := range info.Fragments {
 		segment := chain.SegmentList{
@@ -355,14 +372,17 @@ func (g *Gateway) CreateStorageOrder(info task.FileInfo) (string, error) {
 	user.User = *acc
 	user.FileName = types.NewBytes([]byte(info.FileName))
 	user.TerriortyName = types.NewBytes([]byte(info.Territory))
-	hash, err := g.cessCli.UploadDeclaration(getFileHash(info.Fid), segments, user, uint64(info.FileSize), nil, nil)
-	if err != nil {
-		return hash, errors.Wrap(err, "create storage order error")
-	}
-	return hash, nil
+	g.txPool.Submit(func() {
+		hash, err = g.cessCli.UploadDeclaration(getFileHash(info.Fid), segments, user, uint64(info.FileSize), nil, nil)
+		if err != nil && strings.Contains(err.Error(), "Insufficient balance") {
+			g.alarm.Alert("warn", err.Error())
+		}
+	})
+	return hash, errors.Wrap(err, "create storage order error")
 }
 
 func (g *Gateway) CreateFlashStorageOrder(owner []byte, fid, filename, territory string) (string, error) {
+	var hash string
 	cli, err := g.GetCessClient()
 	if err != nil {
 		return "", errors.Wrap(err, "create flash storage order error")
@@ -391,11 +411,13 @@ func (g *Gateway) CreateFlashStorageOrder(owner []byte, fid, filename, territory
 		}
 		segments = append(segments, segment)
 	}
-	hash, err := cli.UploadDeclaration(getFileHash(fid), segments, user, meta.FileSize.Uint64(), nil, nil)
-	if err != nil {
-		return hash, errors.Wrap(err, "create flash storage order error")
-	}
-	return hash, nil
+	g.txPool.Submit(func() {
+		hash, err = cli.UploadDeclaration(getFileHash(fid), segments, user, meta.FileSize.Uint64(), nil, nil)
+		if err != nil && strings.Contains(err.Error(), "Insufficient balance") {
+			g.alarm.Alert("warn", err.Error())
+		}
+	})
+	return hash, errors.Wrap(err, "create flash storage order error")
 }
 
 func (g *Gateway) PreprocessFile(ctx context.Context, b *buffer.FileBuffer, file io.Reader, acc []byte, territory, filename string, encrypt bool) (task.FileInfo, error) {

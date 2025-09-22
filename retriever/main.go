@@ -10,7 +10,7 @@ import (
 	"github.com/CESSProject/go-sdk/logger"
 )
 
-const VERSION = "v0.1.1"
+const VERSION = "v0.1.5"
 
 func main() {
 	var confPath string

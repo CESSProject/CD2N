@@ -78,23 +78,23 @@ func (h *ServerHandle) FetchFile(c *gin.Context) {
 	info, err := h.gateway.FetchFile(context.Background(), fid, token)
 	if err != nil {
 		h.partners.CacherDistribution(addr, false)
+		logger.GetLogger(config.LOG_PROVIDER).Errorf("L2 Node %s fetch fragment %s from file %s  error: %s", c.ClientIP(), fragment, fid, err.Error())
 		c.JSON(http.StatusBadRequest, tsproto.NewResponse(http.StatusBadRequest, "fetch file error", err.Error()))
 		return
 	}
 	h.partners.CacherDistribution(addr, true)
 
 	c.Header("dflag", info.DataFlag)
-	if info.DataFlag == gateway.DATA_FLAG_EMPTY {
-		return
-	}
 	switch info.DataFlag {
 	case gateway.DATA_FLAG_EMPTY:
+		//c.Status(http.StatusOK) Default Response
 	case gateway.DATA_FLAG_NORMAL:
 		c.File(info.FilePath)
 	case gateway.DATA_FLAG_ORIGIN, gateway.DATA_FLAG_RAW:
 		start := int64(info.SegIdx*config.SEGMENT_SIZE + info.FragIdx*config.FRAGMENT_SIZE)
 		file, err := os.Open(info.FilePath)
 		if err != nil {
+			logger.GetLogger(config.LOG_PROVIDER).Errorf("L2 Node %s fetch fragment %s from file %s  error: %s", c.ClientIP(), fragment, fid, err.Error())
 			c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "fetch file error", err.Error()))
 			return
 		}

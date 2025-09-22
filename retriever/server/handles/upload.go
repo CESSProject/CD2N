@@ -26,6 +26,10 @@ import (
 	"github.com/pkg/errors"
 )
 
+const (
+	DATA_PROCESS_TIMEOUT = 60 * time.Second
+)
+
 func (h *ServerHandle) LightningUpload(c *gin.Context) {
 	value, ok := c.Get("user")
 	if !ok {
@@ -96,7 +100,7 @@ func (h *ServerHandle) UploadLocalFile(c *gin.Context) {
 	}
 	defer src.Close()
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 45*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), DATA_PROCESS_TIMEOUT)
 	defer cancel()
 
 	finfo, err := h.gateway.PreprocessFile(ctx, h.buffer, src, user.Account, territory, filename, encrypt)
@@ -136,7 +140,7 @@ func (h *ServerHandle) UploadUserFileTemp(c *gin.Context) {
 	}
 	defer src.Close()
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 45*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), DATA_PROCESS_TIMEOUT)
 	defer cancel()
 	finfo, err := h.gateway.PreprocessFile(ctx, h.buffer, src, pubkey, territory, file.Filename, encrypt)
 	if err != nil {
@@ -179,7 +183,7 @@ func (h *ServerHandle) UploadUserFile(c *gin.Context) {
 	}
 	defer src.Close()
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 45*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), DATA_PROCESS_TIMEOUT)
 	defer cancel()
 	finfo, err := h.gateway.PreprocessFile(ctx, h.buffer, src, user.Account, territory, file.Filename, encrypt)
 	if err != nil {
@@ -354,7 +358,7 @@ func (h *ServerHandle) UploadFileParts(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "parts upload error", err.Error()))
 			return
 		}
-		c.JSON(http.StatusOK, tsproto.NewResponse(http.StatusOK, "success", partId))
+		c.JSON(http.StatusOK, tsproto.NewResponse(http.StatusPermanentRedirect, "success", partId))
 		return
 	}
 	//combine files
@@ -377,7 +381,7 @@ func (h *ServerHandle) UploadFileParts(c *gin.Context) {
 	}
 	defer f.Close()
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 45*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), DATA_PROCESS_TIMEOUT)
 	defer cancel()
 	finfo, err := h.gateway.PreprocessFile(ctx, h.buffer, f, user.Account, partsInfo.Territory, fname, encrypt)
 	if err != nil {

@@ -14,6 +14,7 @@ import (
 
 	"github.com/CD2N/CD2N/retriever/config"
 	"github.com/CD2N/CD2N/retriever/gateway"
+	"github.com/CD2N/CD2N/retriever/libs/alert"
 	"github.com/CD2N/CD2N/retriever/libs/client"
 	"github.com/CD2N/CD2N/retriever/node"
 	"github.com/CD2N/CD2N/retriever/utils"
@@ -159,6 +160,8 @@ func (h *ServerHandle) InitHandlesRuntime(ctx context.Context) error {
 	)
 	h.partners = node.NewNodeManager(contractCli)
 
+	go h.partners.AutoUpdateCachersServer()
+
 	go func() {
 		ticker := time.NewTicker(time.Minute * 30)
 		if err := h.partners.DiscoveryRetrievers(); err != nil {
@@ -209,7 +212,9 @@ func (h *ServerHandle) InitHandlesRuntime(ctx context.Context) error {
 	); err != nil {
 		return errors.Wrap(err, "init handles runtime error")
 	}
-
+	// reigster alarm
+	alarm := alert.NewLarkAlertHandler(conf)
+	alert.AlarmInjection(alarm, h.gateway)
 	//register oss node on chain
 	log.Println("check or register oss node on chain ...")
 	if err = h.registerOssNode(conf); err != nil {

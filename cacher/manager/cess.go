@@ -3,6 +3,7 @@ package manager
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"net/url"
@@ -16,6 +17,7 @@ import (
 	"github.com/CESSProject/go-sdk/chain"
 	"github.com/CESSProject/go-sdk/libs/cache"
 	"github.com/CESSProject/go-sdk/libs/tsproto"
+	sdkutils "github.com/CESSProject/go-sdk/libs/utils"
 	"github.com/CESSProject/go-sdk/logger"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/panjf2000/ants/v2"
@@ -27,6 +29,13 @@ const (
 	WORK_CLAIM_DATA = "claim_data"
 	WORK_FETCH_DATA = "fetch_data"
 	WORK_PUSH_DATA  = "push_data"
+)
+
+const (
+	DATA_FLAG_EMPTY  = "empty"
+	DATA_FLAG_ORIGIN = "origin"
+	DATA_FLAG_NORMAL = "normal"
+	DATA_FLAG_RAW    = "raw"
 )
 
 type FileInfo struct {
@@ -425,24 +434,75 @@ func (te *CessAccessTaskExecutor) FetchDataFromRetriever(task *DataProvideTask) 
 	if err != nil {
 		return errors.Wrap(err, "fetch data from retriever error")
 	}
-	data, err := tsproto.FetchFile(u, task.Token, task.Fid, task.Did)
+	// data, err := tsproto.FetchFile(u, task.Token, task.Fid, task.Did)
+	// if err != nil {
+	// 	te.ErrorFeedback(task.Acc)
+	// 	return errors.Wrap(err, "fetch data from retriever error")
+	// }
+	// f, err := os.Create(task.Path)
+	// if err != nil {
+	// 	return errors.Wrap(err, "fetch data from retriever error")
+	// }
+	// defer f.Close()
+
+	// if _, err = f.Write(data); err != nil {
+	// 	return errors.Wrap(err, "fetch data from retriever error")
+	// }
+	flag, data, err := tsproto.FetchDataAndFlag(u, task.Token, task.Fid, task.Did)
 	if err != nil {
 		te.ErrorFeedback(task.Acc)
 		return errors.Wrap(err, "fetch data from retriever error")
 	}
-	f, err := os.Create(task.Path)
-	if err != nil {
-		return errors.Wrap(err, "fetch data from retriever error")
-	}
-	defer f.Close()
-
-	if _, err = f.Write(data); err != nil {
+	if err = DataProcessing(data, task.Did, task.Path, flag); err != nil {
 		return errors.Wrap(err, "fetch data from retriever error")
 	}
 	logger.GetLogger(config.LOG_TASK).Infof(
 		"task[%s(token:%s)]: fetch file %s fragment %s for miner %s success",
 		task.Tid, task.Token, task.Fid, task.Did, task.Storager.Account,
 	)
+	return nil
+}
+
+func DataProcessing(source []byte, did, fpath, flag string) error {
+	var (
+		target []byte
+	)
+	switch flag {
+	case DATA_FLAG_EMPTY:
+		target = make([]byte, FRAGMENT_SIZE)
+	case DATA_FLAG_ORIGIN, DATA_FLAG_NORMAL:
+		target := make([]byte, FRAGMENT_SIZE)
+		copy(target, source)
+	case DATA_FLAG_RAW:
+		segment := make([]byte, SEGMENT_SIZE)
+		copy(segment, source)
+		hash := sha256.New()
+		got := false
+		if err := sdkutils.ReedSolomonWithHandle(segment, func(shard []byte) error {
+			if got {
+				return nil
+			}
+			hash.Reset()
+			hash.Write(shard)
+			fragment := hex.EncodeToString(hash.Sum(nil))
+			if fragment == did {
+				target = shard
+				got = true
+			}
+			return nil
+		}); err != nil {
+			return errors.Wrap(err, "processing data error")
+		}
+	}
+	f, err := os.Create(fpath)
+	if err != nil {
+		return errors.Wrap(err, "processing data error")
+	}
+	defer f.Close()
+
+	if _, err = f.Write(target); err != nil {
+		return errors.Wrap(err, "processing data error")
+	}
 	return nil
 }
 

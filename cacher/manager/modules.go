@@ -70,7 +70,6 @@ func (n *Retriever) SubscribeMessage(ctx context.Context, receiver chan<- *redis
 		return
 	}
 	sub := n.redisCli.Subscribe(ctx, channel...)
-
 	defer sub.Close()
 	ch := sub.Channel()
 	logger.GetLogger(config.LOG_NODE).Info("subscribe to ", n.Endpoint)
@@ -80,9 +79,14 @@ func (n *Retriever) SubscribeMessage(ctx context.Context, receiver chan<- *redis
 			n.subscribing.Store(false)
 			return
 		case <-ctx.Done():
+			n.subscribing.Store(false)
 			return
-		case msg := <-ch:
+		case msg, open := <-ch:
 			receiver <- msg
+			if !open {
+				n.subscribing.Store(false)
+				return
+			}
 		}
 	}
 }

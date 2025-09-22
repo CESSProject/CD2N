@@ -24,7 +24,10 @@ type DataUnit struct {
 func (g *Gateway) BatchOffloadingWithFileInfo(info task.FileInfo) error {
 	//create date units
 	for _, s := range info.Fragments {
-		for _, f := range s {
+		for i, f := range s {
+			if i < config.FRAGMENTS_NUM {
+				continue
+			}
 			select {
 			case g.offloadingQueue <- DataUnit{
 				Did:  f,

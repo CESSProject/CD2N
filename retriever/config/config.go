@@ -16,6 +16,8 @@ type Config struct {
 	ChainConfig
 	NodeConfig
 	ServerConfig
+	GatewayConfig
+	AlertConfig
 }
 
 type DiskConfig struct {
@@ -40,6 +42,20 @@ type NodeConfig struct {
 	TokenAcc     string
 	TokenAccSign string
 	Mnemonic     string
+}
+
+type GatewayConfig struct {
+	UploadThreadNum   int
+	DownloadThreadNum int
+	UploadChannelSize int
+}
+
+type AlertConfig struct {
+	AlertHook  string
+	AlertName  string
+	Region     string
+	Maintainer string
+	Url        string
 }
 
 type ServerConfig struct {
@@ -165,6 +181,9 @@ func InitConfig() error {
 		}
 		conf.RedisLoacl = fmt.Sprintf("redis_host:%s", s[len(s)-1])
 	}
+	conf.DownloadThreadNum = max(conf.DownloadThreadNum, 256)
+	conf.UploadChannelSize = max(conf.UploadChannelSize, 512)
+	conf.UploadThreadNum = max(conf.UploadThreadNum, 24)
 	jb, _ := json.Marshal(conf.DiskConfig)
 	log.Println("init disk config:", string(jb))
 	return nil

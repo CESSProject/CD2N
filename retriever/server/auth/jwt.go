@@ -56,12 +56,17 @@ func Jwth() *JwtHelper {
 	return jwtHelper
 }
 
-func (j *JwtHelper) GenerateToken(user UserInfo) (string, error) {
+func (j *JwtHelper) GenerateToken(user UserInfo, exp time.Duration) (string, error) {
+	if exp <= 0 || exp > 7*24 { // max 1 week
+		exp = time.Duration(j.ValidDuration)
+	} else {
+		exp = exp * time.Hour
+	}
 	claims := CustomClaims{
 		user,
 		jwt.RegisteredClaims{
 			NotBefore: &jwt.NumericDate{Time: time.Now().Add(-30)},
-			ExpiresAt: &jwt.NumericDate{Time: time.Now().Add(time.Duration(j.ValidDuration))},
+			ExpiresAt: &jwt.NumericDate{Time: time.Now().Add(exp)},
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

@@ -333,7 +333,7 @@ func (g *Gateway) checker(ctx context.Context, buffer *buffer.FileBuffer, stat S
 					if err != nil {
 						continue
 					}
-					if time.Since(upt) >= task.PROVIDE_TASK_CHECK_TIME*2 {
+					if time.Since(upt) >= task.PROVIDE_TASK_CHECK_TIME {
 						if stat != nil {
 							stat.StatTimes(v.Claimant)
 						}
@@ -425,12 +425,6 @@ func TaskGc(buffer *buffer.FileBuffer, ftask task.ProvideTask) {
 
 func (g *Gateway) GetCessClient() (*chain.Client, error) {
 	if g.cessCli != nil {
-		if _, err := g.cessCli.QueryBlockNumber(""); err == nil {
-			return g.cessCli, nil
-		}
-		if err := g.cessCli.RefreshSubstrateApi(true); err != nil {
-			return nil, errors.Wrap(err, "get cess client error")
-		}
 		return g.cessCli, nil
 	}
 	conf := config.GetConfig()
