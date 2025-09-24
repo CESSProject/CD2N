@@ -2,13 +2,12 @@ package gateway
 
 import (
 	"context"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/CD2N/CD2N/retriever/config"
-	"github.com/CD2N/CD2N/retriever/node"
+	"github.com/CESSProject/CD2N/retriever/config"
+	"github.com/CESSProject/CD2N/retriever/node"
+	"github.com/CESSProject/CD2N/retriever/utils"
 	"github.com/CESSProject/go-sdk/chain"
 	"github.com/CESSProject/go-sdk/libs/buffer"
 	"github.com/CESSProject/go-sdk/logger"
@@ -45,7 +44,7 @@ func (g *Gateway) RetrieveDataFromCache(fid, key, segment, dataRange string) (Da
 	info.Name = fname
 	info.Path = fpath
 	if dataRange != "" {
-		info.Start, info.End, err = ParseFileRange(dataRange)
+		info.Start, info.End, err = utils.ParseFileRange(dataRange)
 		if err != nil {
 			return info, errors.Wrap(err, "download data error")
 		}
@@ -95,7 +94,7 @@ func (g *Gateway) DownloadData(ctx context.Context, b *buffer.FileBuffer, rr *no
 	}
 
 	if dataRange != "" {
-		info.Start, info.End, err = ParseFileRange(dataRange)
+		info.Start, info.End, err = utils.ParseFileRange(dataRange)
 		if err != nil {
 			return info, errors.Wrap(err, "download data error")
 		}
@@ -235,29 +234,6 @@ func GetSegmentByRange(meta chain.FileMetadata, start, end int64) (string, int64
 		end -= index * config.FRAGMENT_SIZE
 	}
 	return string(meta.SegmentList[index].Hash[:]), start, end
-}
-
-func ParseFileRange(frange string) (int64, int64, error) {
-	ranges := strings.Split(frange, "=")
-	if len(ranges) != 2 || ranges[0] != "bytes" {
-		return 0, 0, errors.Wrap(errors.New("invalid range"), "parse file range error")
-	}
-	parts := strings.Split(ranges[1], "-")
-	if len(parts) != 2 {
-		return 0, 0, errors.Wrap(errors.New("invalid range"), "parse file range error")
-	}
-	start, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil {
-		return 0, 0, errors.Wrap(err, "parse file range error")
-	}
-	var end int64
-	if parts[1] != "" {
-		end, err = strconv.ParseInt(parts[1], 10, 64)
-		if err != nil {
-			return 0, 0, errors.Wrap(err, "parse file range error")
-		}
-	}
-	return start, end, nil
 }
 
 func ParseDataIds(segment chain.SegmentInfo) []string {

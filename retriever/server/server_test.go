@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CD2N/CD2N/retriever/config"
-	"github.com/CD2N/CD2N/retriever/libs/client"
-	"github.com/CD2N/CD2N/retriever/libs/task"
-	utils2 "github.com/CD2N/CD2N/retriever/utils"
+	"github.com/CESSProject/CD2N/retriever/config"
+	"github.com/CESSProject/CD2N/retriever/libs/client"
+	"github.com/CESSProject/CD2N/retriever/libs/task"
+	utils2 "github.com/CESSProject/CD2N/retriever/utils"
 	"github.com/CESSProject/go-sdk/libs/tsproto"
 
 	//"github.com/CESSProject/cess-go-sdk/utils"

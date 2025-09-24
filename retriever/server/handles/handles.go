@@ -3,6 +3,7 @@ package handles
 import (
 	"context"
 	"encoding/hex"
+	"io"
 	"log"
 	"math/big"
 	"net/http"
@@ -12,12 +13,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CD2N/CD2N/retriever/config"
-	"github.com/CD2N/CD2N/retriever/gateway"
-	"github.com/CD2N/CD2N/retriever/libs/alert"
-	"github.com/CD2N/CD2N/retriever/libs/client"
-	"github.com/CD2N/CD2N/retriever/node"
-	"github.com/CD2N/CD2N/retriever/utils"
+	"github.com/CESSProject/CD2N/retriever/config"
+	"github.com/CESSProject/CD2N/retriever/gateway"
+	"github.com/CESSProject/CD2N/retriever/libs/alert"
+	"github.com/CESSProject/CD2N/retriever/libs/client"
+	"github.com/CESSProject/CD2N/retriever/node"
+	"github.com/CESSProject/CD2N/retriever/utils"
 	"github.com/CESSProject/go-sdk/chain"
 	"github.com/CESSProject/go-sdk/chain/evm"
 	"github.com/CESSProject/go-sdk/libs/buffer"
@@ -33,21 +34,22 @@ import (
 )
 
 type ServerHandle struct {
-	retr        *node.ResourceRetriever
-	node        *node.Manager
-	partners    *node.NodeManager
-	gateway     *gateway.Gateway
-	buffer      *buffer.FileBuffer
-	Ac          *AccessController
-	pool        *ants.Pool
-	partRecord  *redis.Client //*leveldb.DB
-	filepartMap *sync.Map
-	ossPubkey   []byte
-	teeEndpoint string
-	teePubkey   []byte
-	teeAddr     string
-	nodeAddr    string
-	poolId      string
+	retr             *node.ResourceRetriever
+	node             *node.Manager
+	partners         *node.NodeManager
+	gateway          *gateway.Gateway
+	buffer           *buffer.FileBuffer
+	Ac               *AccessController
+	pool             *ants.Pool
+	partRecord       *redis.Client //*leveldb.DB
+	filepartMap      *sync.Map
+	batchUploadQueue chan BatchUploadCmd
+	ossPubkey        []byte
+	teeEndpoint      string
+	teePubkey        []byte
+	teeAddr          string
+	nodeAddr         string
+	poolId           string
 }
 
 type PartsInfo struct {
@@ -64,14 +66,44 @@ type PartsInfo struct {
 	UpdateDate time.Time `json:"update_date,omitempty"`
 }
 
+type BatchFilesInfo struct {
+	Hash         string    `json:"hash,omitempty"`
+	FileName     string    `json:"file_name,omitempty"`
+	Owner        []byte    `json:"owner,omitempty"`
+	Territory    string    `json:"territory,omitempty"`
+	FilePath     string    `json:"-"`
+	UploadedSize int64     `json:"uploaded_size,omitempty"`
+	TotalSize    int64     `json:"total_size,omitempty"`
+	AsyncUpload  bool      `json:"async_upload,omitempty"`
+	NoTxProxy    bool      `json:"no_tx_proxy,omitempty"`
+	Encrypt      bool      `json:"encrypt,omitempty"`
+	UpdateDate   time.Time `json:"update_date,omitempty"`
+}
+
+type BatchUploadResult struct {
+	Err error
+	BatchFilesInfo
+}
+
+type BatchUploadCmd struct {
+	Hash   string
+	User   []byte
+	Reader io.Reader
+	Start  int64
+	End    int64
+	Ctx    context.Context
+	Res    chan BatchUploadResult
+}
+
 func NewServerHandle() (*ServerHandle, error) {
 	pool, err := ants.NewPool(64)
 	if err != nil {
 		return nil, errors.Wrap(err, "new server handle error")
 	}
 	return &ServerHandle{
-		filepartMap: &sync.Map{},
-		pool:        pool,
+		batchUploadQueue: make(chan BatchUploadCmd, 1024),
+		filepartMap:      &sync.Map{},
+		pool:             pool,
 	}, nil
 }
 
@@ -161,6 +193,8 @@ func (h *ServerHandle) InitHandlesRuntime(ctx context.Context) error {
 	h.partners = node.NewNodeManager(contractCli)
 
 	go h.partners.AutoUpdateCachersServer()
+
+	go h.batchUploadServer()
 
 	go func() {
 		ticker := time.NewTicker(time.Minute * 30)

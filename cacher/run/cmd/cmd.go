@@ -10,9 +10,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/CD2N/CD2N/cacher/client"
-	"github.com/CD2N/CD2N/cacher/config"
-	"github.com/CD2N/CD2N/cacher/manager"
+	"github.com/CESSProject/CD2N/cacher/client"
+	"github.com/CESSProject/CD2N/cacher/config"
+	"github.com/CESSProject/CD2N/cacher/manager"
 	"github.com/CESSProject/go-sdk/chain/evm"
 	"github.com/CESSProject/go-sdk/libs/cache"
 	"github.com/CESSProject/go-sdk/logger"
@@ -188,7 +188,7 @@ func cmd_run_func(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	taskDispatcher, err := manager.NewTaskDispatcher(512)
+	taskDispatcher, err := manager.NewTaskDispatcher(4096)
 	if err != nil {
 		log.Println(err)
 		return

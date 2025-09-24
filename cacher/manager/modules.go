@@ -9,9 +9,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/CD2N/CD2N/cacher/client"
-	"github.com/CD2N/CD2N/cacher/config"
-	"github.com/CD2N/CD2N/cacher/utils"
+	"github.com/CESSProject/CD2N/cacher/client"
+	"github.com/CESSProject/CD2N/cacher/config"
+	"github.com/CESSProject/CD2N/cacher/utils"
 	"github.com/CESSProject/go-sdk/chain"
 	"github.com/CESSProject/go-sdk/chain/evm"
 	"github.com/CESSProject/go-sdk/libs/tsproto"
@@ -329,6 +329,7 @@ func (rm *RetrieverManager) SubscribeRetrievers(ctx context.Context, receiver ch
 }
 
 func (rm *RetrieverManager) LoadRetrievers(cli *evm.CacheProtoContract, conf config.Config, redisAcc, redisPwd string) error {
+	cliMap := map[string]*redis.Client{}
 	for _, cdn := range conf.Retrievers {
 		if cdn.Account == "" || cdn.Endpoint == "" {
 			continue
@@ -346,10 +347,16 @@ func (rm *RetrieverManager) LoadRetrievers(cli *evm.CacheProtoContract, conf con
 				unsubCh:  make(chan struct{}, 1),
 			}
 
-			if node.Available = CheckNodeAvailable(node); node.Available {
-				node.redisCli = client.NewRedisClient(node.RedisAddress, redisAcc, redisPwd)
-				rm.nodes.Store(cdn.Account, node)
+			if node.Available = CheckNodeAvailable(node); !node.Available {
+				continue
 			}
+			if cli, ok := cliMap[node.RedisAddress]; ok {
+				node.redisCli = cli
+			} else {
+				node.redisCli = client.NewRedisClient(node.RedisAddress, redisAcc, redisPwd)
+				cliMap[node.RedisAddress] = node.redisCli
+			}
+			rm.nodes.Store(cdn.Account, node)
 			logger.GetLogger(config.LOG_NODE).Infof("load retriever %s in local config", cdn.Endpoint)
 		}
 	}
@@ -379,10 +386,16 @@ func (rm *RetrieverManager) LoadRetrievers(cli *evm.CacheProtoContract, conf con
 				Endpoint: info.Endpoint,
 				unsubCh:  make(chan struct{}, 1),
 			}
-			if node.Available = CheckNodeAvailable(node); node.Available {
-				node.redisCli = client.NewRedisClient(node.RedisAddress, redisAcc, redisPwd)
-				rm.nodes.Store(account, node)
+			if node.Available = CheckNodeAvailable(node); !node.Available {
+				continue
 			}
+			if cli, ok := cliMap[node.RedisAddress]; ok {
+				node.redisCli = cli
+			} else {
+				node.redisCli = client.NewRedisClient(node.RedisAddress, redisAcc, redisPwd)
+				cliMap[node.RedisAddress] = node.redisCli
+			}
+			rm.nodes.Store(account, node)
 			logger.GetLogger(config.LOG_NODE).Infof("load retriever %s on contract", info.Endpoint)
 		}
 	}
@@ -415,8 +428,13 @@ func (rm *RetrieverManager) LoadRetrievers(cli *evm.CacheProtoContract, conf con
 				old.Available = node.Available
 			}
 		} else {
+			if cli, ok := cliMap[node.RedisAddress]; ok {
+				node.redisCli = cli
+			} else {
+				node.redisCli = client.NewRedisClient(node.RedisAddress, redisAcc, redisPwd)
+				cliMap[node.RedisAddress] = node.redisCli
+			}
 			node.unsubCh = make(chan struct{}, 1)
-			node.redisCli = client.NewRedisClient(node.RedisAddress, redisAcc, redisPwd)
 			rm.nodes.Store(node.Account, node)
 			logger.GetLogger(config.LOG_NODE).Infof("load oss %s on chain", oss.Domain)
 		}

@@ -8,10 +8,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/CD2N/CD2N/retriever/config"
-	"github.com/CD2N/CD2N/retriever/server/auth"
-	"github.com/CD2N/CD2N/retriever/server/handles"
-	"github.com/CD2N/CD2N/retriever/utils"
+	"github.com/CESSProject/CD2N/retriever/config"
+	"github.com/CESSProject/CD2N/retriever/server/auth"
+	"github.com/CESSProject/CD2N/retriever/server/handles"
+	"github.com/CESSProject/CD2N/retriever/utils"
 	"github.com/gin-gonic/gin"
 )
 

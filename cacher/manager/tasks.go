@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CD2N/CD2N/cacher/config"
+	"github.com/CESSProject/CD2N/cacher/config"
 	"github.com/CESSProject/go-sdk/chain/evm"
 	"github.com/CESSProject/go-sdk/logger"
 	"github.com/go-redis/redis/v8"
@@ -58,7 +58,7 @@ func NewTaskDispatcher(wqLen int) (*TaskDispatcher, error) {
 	if wqLen <= 0 || wqLen > 1024 {
 		wqLen = 1024
 	}
-	pool, err := ants.NewPool(512, ants.WithNonblocking(true))
+	pool, err := ants.NewPool(256, ants.WithNonblocking(true))
 	if err != nil {
 		return nil, errors.Wrap(err, "new task dispatcher error")
 	}

@@ -1,4 +1,4 @@
-module github.com/CD2N/CD2N/cacher
+module github.com/CESSProject/CD2N/cacher
 
 go 1.23.0
 

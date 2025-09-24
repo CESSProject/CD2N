@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/CD2N/CD2N/retriever/server/auth"
-	"github.com/CD2N/CD2N/retriever/utils"
+	"github.com/CESSProject/CD2N/retriever/server/auth"
+	"github.com/CESSProject/CD2N/retriever/utils"
 	"github.com/CESSProject/go-sdk/libs/tsproto"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/gin-gonic/gin"

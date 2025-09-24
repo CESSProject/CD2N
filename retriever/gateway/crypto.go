@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/CD2N/CD2N/retriever/libs/client"
+	"github.com/CESSProject/CD2N/retriever/libs/client"
 	"github.com/CESSProject/cess-crypto/gosdk"
 	"github.com/ChainSafe/go-schnorrkel"
 	"github.com/go-redis/redis/v8"

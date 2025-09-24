@@ -14,8 +14,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/CD2N/CD2N/retriever/config"
-	"github.com/CD2N/CD2N/retriever/utils"
+	"github.com/CESSProject/CD2N/retriever/config"
+	"github.com/CESSProject/CD2N/retriever/utils"
 	"github.com/CESSProject/go-sdk/chain"
 	"github.com/CESSProject/go-sdk/libs/buffer"
 	"github.com/CESSProject/go-sdk/libs/tsproto"

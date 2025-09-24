@@ -6,9 +6,9 @@ import (
 	"net/http/pprof"
 	"strings"
 
-	"github.com/CD2N/CD2N/retriever/config"
-	"github.com/CD2N/CD2N/retriever/server/auth"
-	"github.com/CD2N/CD2N/retriever/server/handles"
+	"github.com/CESSProject/CD2N/retriever/config"
+	"github.com/CESSProject/CD2N/retriever/server/auth"
+	"github.com/CESSProject/CD2N/retriever/server/handles"
 	"github.com/CESSProject/go-sdk/libs/tsproto"
 	"github.com/gin-gonic/gin"
 )
@@ -135,8 +135,8 @@ func RegisterHandles(router *gin.Engine, h *handles.ServerHandle) {
 	gateway.GET("/download/:fid", h.DownloadUserFile)
 	gateway.GET("/download/:fid/:segment", h.DownloadUserFile)
 	gateway.POST("/upload/file", h.UploadUserFile)
-	gateway.POST("/part-upload", h.RequestPartsUpload)
-	gateway.POST("/upload/part", h.UploadFileParts)
+	gateway.POST("/upload/batch/request", h.BatchUploadRequest)
+	gateway.POST("/upload/batch/file", h.BatchUpload)
 
 	if !conf.DisableLocalSvc {
 		gateway.POST("/upload/local", h.UploadLocalFile)

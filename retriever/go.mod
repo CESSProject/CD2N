@@ -1,4 +1,4 @@
-module github.com/CD2N/CD2N/retriever
+module github.com/CESSProject/CD2N/retriever
 
 go 1.23.0
 

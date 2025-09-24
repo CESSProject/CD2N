@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/mholt/archiver"
@@ -272,4 +273,27 @@ func WriteFile(fpath string, data []byte) error {
 		return err
 	}
 	return b.Flush()
+}
+
+func ParseFileRange(frange string) (int64, int64, error) {
+	ranges := strings.Split(frange, "=")
+	if len(ranges) != 2 || ranges[0] != "bytes" {
+		return 0, 0, errors.Wrap(errors.New("invalid range"), "parse file range error")
+	}
+	parts := strings.Split(ranges[1], "-")
+	if len(parts) != 2 {
+		return 0, 0, errors.Wrap(errors.New("invalid range"), "parse file range error")
+	}
+	start, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return 0, 0, errors.Wrap(err, "parse file range error")
+	}
+	var end int64
+	if parts[1] != "" {
+		end, err = strconv.ParseInt(parts[1], 10, 64)
+		if err != nil {
+			return 0, 0, errors.Wrap(err, "parse file range error")
+		}
+	}
+	return start, end, nil
 }

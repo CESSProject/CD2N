@@ -5,19 +5,18 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/CD2N/CD2N/retriever/config"
-	"github.com/CD2N/CD2N/retriever/libs/client"
-	"github.com/CD2N/CD2N/retriever/libs/task"
-	"github.com/CD2N/CD2N/retriever/server/auth"
-	"github.com/CD2N/CD2N/retriever/server/response"
-	"github.com/CD2N/CD2N/retriever/utils"
+	"github.com/CESSProject/CD2N/retriever/config"
+	"github.com/CESSProject/CD2N/retriever/libs/client"
+	"github.com/CESSProject/CD2N/retriever/libs/task"
+	"github.com/CESSProject/CD2N/retriever/server/auth"
+	"github.com/CESSProject/CD2N/retriever/server/response"
+	"github.com/CESSProject/CD2N/retriever/utils"
 	"github.com/CESSProject/go-sdk/chain"
 	"github.com/CESSProject/go-sdk/libs/tsproto"
 	"github.com/CESSProject/go-sdk/logger"
@@ -27,7 +26,7 @@ import (
 )
 
 const (
-	DATA_PROCESS_TIMEOUT = 60 * time.Second
+	DATA_PROCESS_TIMEOUT = 120 * time.Second
 )
 
 func (h *ServerHandle) LightningUpload(c *gin.Context) {
@@ -275,22 +274,57 @@ func (h *ServerHandle) CheckPreconditions(fid, territory string, acc []byte, siz
 	return response.NewResp(response.CODE_UP_SUCCESS, "success", fid)
 }
 
-func (h *ServerHandle) UploadFileParts(c *gin.Context) {
-	partId := c.PostForm("partid")
-	shadowHash := c.PostForm("shadowhash")
-	async := c.PostForm("async") == "true"
-	noProxy := c.PostForm("noProxy") == "true"
-	encrypt := c.PostForm("encrypt") == "true"
+func (h *ServerHandle) BatchUploadRequest(c *gin.Context) {
+	var (
+		info BatchFilesInfo
+		err  error
+	)
 
+	if err := c.BindJSON(&info); err != nil {
+		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "request batch upload error", err.Error()))
+		return
+	}
+	if info.FileName == "" || info.Territory == "" || info.TotalSize <= 0 {
+		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "request batch upload error", "bad request params"))
+		return
+	}
+	value, ok := c.Get("user")
+	if !ok {
+		c.JSON(http.StatusBadRequest, tsproto.NewResponse(http.StatusBadRequest, "request batch upload error", "bad user info"))
+		return
+	}
+	user, ok := value.(auth.UserInfo)
+	if !ok || user.Account == nil {
+		c.JSON(http.StatusBadRequest, tsproto.NewResponse(http.StatusBadRequest, "request batch upload error", "bad user info"))
+		return
+	}
+	info.Owner = user.Account
+	info.UpdateDate = time.Now()
+
+	hash := hex.EncodeToString(utils.GetDataHash(info))
+	info.Hash = hash
+	info.FilePath, err = h.buffer.NewBufPath(hex.EncodeToString(user.Account), hash)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "request batch upload error", err.Error()))
+		return
+	}
+	if err = client.PutDataToRedis(h.partRecord, context.Background(),
+		fmt.Sprintf("%s-batch_upload-%s", h.nodeAddr, hash), info, 0); err != nil {
+		c.JSON(http.StatusBadRequest, tsproto.NewResponse(http.StatusBadRequest, "request batch upload error", err.Error()))
+		return
+	}
+	c.Header("hash", hash)
+	c.JSON(http.StatusOK, tsproto.NewResponse(http.StatusOK, "success", hash))
+}
+
+func (h *ServerHandle) BatchUpload(c *gin.Context) {
+	dataRange := c.GetHeader("Range")
+	hash := c.GetHeader("hash")
 	file, err := c.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "parts upload error", err.Error()))
 		return
 	}
-	if partId == "" || shadowHash == "" {
-		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "parts upload error", "bad params"))
-		return
-	}
 	value, ok := c.Get("user")
 	if !ok {
 		c.JSON(http.StatusBadRequest, tsproto.NewResponse(http.StatusBadRequest, "parts upload error", "bad user info"))
@@ -301,189 +335,132 @@ func (h *ServerHandle) UploadFileParts(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, tsproto.NewResponse(http.StatusBadRequest, "parts upload error", "bad user info"))
 		return
 	}
-	idx, err := strconv.Atoi(partId)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), time.Second*60)
+	defer cancel()
+	f, err := file.Open()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "parts upload error", err.Error()))
 		return
-	}
-	fkey := hex.EncodeToString(utils.CalcSha256Hash(user.Account, []byte(shadowHash), []byte(partId)))
-	fpath, err := h.buffer.NewBufPath(hex.EncodeToString(user.Account), shadowHash, fkey)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "parts upload error", err.Error()))
-		return
-	}
-	err = h.SaveFileToBuf(file, fpath)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "parts upload error", err.Error()))
-		return
-	}
-	h.buffer.AddData(fkey, fpath)
-	v, ok := h.filepartMap.Load(shadowHash)
-	if !ok {
-		h.buffer.RemoveData(fpath)
-		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "parts upload error", "no parts record"))
-		return
-	}
-	lock, ok := v.(*sync.Mutex)
-	if !ok {
-		h.buffer.RemoveData(fpath)
-		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "parts upload error", "parse key locker error"))
-		return
-	}
-	lock.Lock()
-	defer lock.Unlock()
-	var partsInfo PartsInfo
-	err = client.GetDataFromRedis(h.partRecord, context.Background(), fmt.Sprintf("%s-filepart-%s", h.nodeAddr, shadowHash), &partsInfo)
-	if err != nil {
-		h.buffer.RemoveData(fpath)
-		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "parts upload error", err.Error()))
-		return
-	}
-	if idx >= len(partsInfo.Parts) || idx < 0 {
-		h.buffer.RemoveData(fpath)
-		c.JSON(http.StatusBadRequest, tsproto.NewResponse(http.StatusBadRequest, "parts upload error", "bad file index"))
-		return
-	}
-	if !bytes.Equal(partsInfo.Owner, user.Account) {
-		h.buffer.RemoveData(fpath)
-		c.JSON(http.StatusBadRequest, tsproto.NewResponse(http.StatusBadRequest, "parts upload error", "file owner mismatch"))
-		return
-	}
-	partsInfo.Parts[idx] = file.Filename
-	partsInfo.PartsCount++
-	if partsInfo.PartsCount < partsInfo.TotalParts {
-		if err = client.PutDataToRedis(h.partRecord, context.Background(),
-			fmt.Sprintf("%s-filepart-%s", h.nodeAddr, shadowHash), partsInfo, 0); err != nil {
-			h.buffer.RemoveData(fpath)
-			c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "parts upload error", err.Error()))
-			return
-		}
-		c.JSON(http.StatusOK, tsproto.NewResponse(http.StatusPermanentRedirect, "success", partId))
-		return
-	}
-	//combine files
-	defer client.DeleteMessage(h.partRecord, context.Background(), fmt.Sprintf("%s-filepart-%s", h.nodeAddr, shadowHash))
-	cfile, err := h.CombineFileParts(partsInfo)
-	if err != nil {
-		h.buffer.RemoveData(fpath)
-		c.JSON(http.StatusBadRequest, tsproto.NewResponse(http.StatusBadRequest, "parts upload error", err.Error()))
-		return
-	}
-	f, err := os.Open(cfile)
-	if err != nil {
-		h.buffer.RemoveData(fpath)
-		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "parts upload error", err.Error()))
-		return
-	}
-	fname := partsInfo.FileName
-	if partsInfo.Archive != "" && partsInfo.DirName != "" {
-		fname = partsInfo.DirName
 	}
 	defer f.Close()
-
-	ctx, cancel := context.WithTimeout(c.Request.Context(), DATA_PROCESS_TIMEOUT)
-	defer cancel()
-	finfo, err := h.gateway.PreprocessFile(ctx, h.buffer, f, user.Account, partsInfo.Territory, fname, encrypt)
+	res := h.batchUpload(ctx, hash, dataRange, user.Account, f)
+	if res.Err != nil {
+		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "parts upload error", err.Error()))
+		return
+	}
+	if res.UploadedSize < res.TotalSize {
+		c.JSON(http.StatusPermanentRedirect, res.UploadedSize)
+		return
+	}
+	cfile, err := os.Open(res.FilePath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "parts upload error", err.Error()))
+		return
+	}
+	defer os.Remove(res.FilePath)
+	defer cfile.Close()
+	pctx, pcancel := context.WithTimeout(c.Request.Context(), DATA_PROCESS_TIMEOUT)
+	defer pcancel()
+	finfo, err := h.gateway.PreprocessFile(pctx, h.buffer, cfile, user.Account, res.Territory, res.FileName, res.Encrypt)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "upload user file error", err.Error()))
 		return
 	}
-	h.upload(c, finfo, async, noProxy)
+	h.upload(c, finfo, res.AsyncUpload, res.NoTxProxy)
 }
 
-func (h *ServerHandle) RequestPartsUpload(c *gin.Context) {
-	var (
-		partsInfo PartsInfo
-		err       error
-	)
-
-	if err := c.BindJSON(&partsInfo); err != nil {
-		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "request parts upload error", err.Error()))
-		return
+func (h *ServerHandle) batchUpload(ctx context.Context, hash, dataRange string, acc []byte, reader io.Reader) BatchUploadResult {
+	var info BatchFilesInfo
+	if err := client.GetDataFromRedis(h.partRecord, context.Background(), fmt.Sprintf("%s-batch_upload-%s", h.nodeAddr, hash), &info); err != nil {
+		return BatchUploadResult{Err: err}
 	}
-	if partsInfo.FileName == "" || partsInfo.ShadowHash == "" || partsInfo.Territory == "" ||
-		partsInfo.TotalParts <= 0 || partsInfo.TotalSize <= 0 {
-		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "request parts upload error", "bad request params"))
-		return
+	start, end, err := utils.ParseFileRange(dataRange)
+	if err != nil {
+		return BatchUploadResult{Err: err}
 	}
-	value, ok := c.Get("user")
-	if !ok {
-		c.JSON(http.StatusBadRequest, tsproto.NewResponse(http.StatusBadRequest, "request parts upload error", "bad user info"))
-		return
+	resCh := make(chan BatchUploadResult, 1)
+	h.batchUploadQueue <- BatchUploadCmd{
+		Hash:   hash,
+		User:   acc,
+		Reader: reader,
+		Start:  start,
+		End:    end,
+		Ctx:    ctx,
+		Res:    resCh,
 	}
-	user, ok := value.(auth.UserInfo)
-	if !ok || user.Account == nil {
-		c.JSON(http.StatusBadRequest, tsproto.NewResponse(http.StatusBadRequest, "request parts upload error", "bad user info"))
-		return
+	select {
+	case res := <-resCh:
+		return res
+	case <-ctx.Done():
+		return BatchUploadResult{Err: errors.New("timeout")}
 	}
-	if _, ok := h.filepartMap.LoadOrStore(partsInfo.ShadowHash, &sync.Mutex{}); ok {
-		c.JSON(http.StatusBadRequest, tsproto.NewResponse(http.StatusBadRequest, "request parts upload error", "file part is uploading"))
-		return
-	}
-	partsInfo.Owner = user.Account
-	partsInfo.UpdateDate = time.Now()
-	partsInfo.Parts = make([]string, partsInfo.TotalParts)
-
-	if err = client.PutDataToRedis(h.partRecord, context.Background(),
-		fmt.Sprintf("%s-filepart-%s", h.nodeAddr, partsInfo.ShadowHash), partsInfo, 0); err != nil {
-		c.JSON(http.StatusBadRequest, tsproto.NewResponse(http.StatusBadRequest, "upload user file error", err.Error()))
-		return
-	}
-	c.JSON(http.StatusOK, tsproto.NewResponse(http.StatusOK, "success", nil))
 }
 
-func (h *ServerHandle) CombineFileParts(info PartsInfo) (string, error) {
-	var files []string = make([]string, 0, info.TotalParts)
-
-	tmpName := hex.EncodeToString(utils.CalcSha256Hash(info.Owner, []byte(info.Territory+info.DirName)))
-	fpath, err := h.buffer.NewBufPath(tmpName)
-	if err != nil {
-		return "", errors.Wrap(err, "combine file parts error")
+func (h *ServerHandle) batchUploadServer() {
+	for cmd := range h.batchUploadQueue {
+		if cmd.Reader == nil || cmd.Res == nil || cmd.Ctx == nil {
+			cmd.Res <- BatchUploadResult{Err: errors.New("invalid params")}
+			continue
+		}
+		batchCmd := cmd
+		h.pool.Submit(func() {
+			if _, ok := h.filepartMap.LoadOrStore(batchCmd.Hash, struct{}{}); ok {
+				h.batchUploadQueue <- batchCmd
+				return
+			}
+			defer h.filepartMap.Delete(batchCmd.Hash)
+			var info BatchFilesInfo
+			key := fmt.Sprintf("%s-batch_upload-%s", h.nodeAddr, batchCmd.Hash)
+			if err := client.GetDataFromRedis(h.partRecord, batchCmd.Ctx, key, &info); err != nil {
+				batchCmd.Res <- BatchUploadResult{Err: err}
+				return
+			}
+			if info.UploadedSize == info.TotalSize {
+				client.DeleteMessage(h.partRecord, batchCmd.Ctx, key)
+				batchCmd.Res <- BatchUploadResult{BatchFilesInfo: info}
+				return
+			}
+			if (batchCmd.Start == 0 && batchCmd.End == 0) || (batchCmd.End != 0 && batchCmd.End <= batchCmd.Start) {
+				batchCmd.Res <- BatchUploadResult{Err: errors.New("bad data range")}
+				return
+			}
+			if info.Owner == nil || !bytes.Equal(batchCmd.User, info.Owner) {
+				batchCmd.Res <- BatchUploadResult{Err: errors.New("unauthorized access")}
+				return
+			}
+			if batchCmd.End == 0 {
+				batchCmd.End = info.TotalSize
+			}
+			buf := make([]byte, batchCmd.End-batchCmd.Start)
+			if n, err := batchCmd.Reader.Read(buf); err != nil {
+				batchCmd.Res <- BatchUploadResult{Err: err}
+				return
+			} else if n != int(batchCmd.End-batchCmd.Start) {
+				batchCmd.Res <- BatchUploadResult{Err: errors.New("bad data")}
+				return
+			}
+			f, err := os.Open(info.FilePath)
+			if err != nil {
+				batchCmd.Res <- BatchUploadResult{Err: err}
+				return
+			}
+			defer f.Close()
+			if _, err := f.WriteAt(buf, batchCmd.Start); err != nil {
+				batchCmd.Res <- BatchUploadResult{Err: err}
+				return
+			}
+			info.UploadedSize += batchCmd.End - batchCmd.Start
+			info.UpdateDate = time.Now()
+			if batchCmd.End == info.TotalSize {
+				client.DeleteMessage(h.partRecord, batchCmd.Ctx, key)
+			} else if err = client.PutDataToRedis(h.partRecord, batchCmd.Ctx,
+				fmt.Sprintf("%s-batch_upload-%s", h.nodeAddr, batchCmd.Hash), info, 0); err != nil {
+				batchCmd.Res <- BatchUploadResult{Err: err}
+				return
+			}
+			batchCmd.Res <- BatchUploadResult{BatchFilesInfo: info}
+		})
 	}
-
-	for idx := 0; idx < info.TotalParts; idx++ {
-		fkey := hex.EncodeToString(utils.CalcSha256Hash(info.Owner, []byte(info.ShadowHash), []byte(fmt.Sprint(idx))))
-		subPath, err := h.buffer.NewBufPath(hex.EncodeToString(info.Owner), info.ShadowHash, fkey)
-		if err != nil {
-			return "", errors.Wrap(err, "combine file parts error")
-		}
-		files = append(files, subPath)
-	}
-	defer func() {
-		for _, f := range files {
-			h.buffer.RemoveData(f)
-		}
-	}()
-	if info.Archive != "" && info.DirName != "" {
-		ar, err := utils.NewArchiver(info.Archive)
-		if err != nil {
-			return "", errors.Wrap(err, "combine file parts error")
-		}
-
-		err = ar.Archive(files, fpath)
-		if err != nil {
-			return "", errors.Wrap(err, "combine file parts error")
-		}
-		h.buffer.AddData(tmpName, fpath)
-		return fpath, nil
-	}
-	file, err := os.Create(fpath)
-	if err != nil {
-		return "", errors.Wrap(err, "combine file parts error")
-	}
-	defer file.Close()
-	for _, subfile := range files {
-		data, err := os.ReadFile(subfile)
-		if err != nil {
-			return "", errors.Wrap(err, "combine file parts error")
-		}
-		_, err = file.Write(data)
-		if err != nil {
-			return "", errors.Wrap(err, "combine file parts error")
-		}
-	}
-	h.buffer.AddData(tmpName, fpath)
-	return fpath, nil
 }
 
 func (h *ServerHandle) AsyncUploadFiles(ctx context.Context) error {

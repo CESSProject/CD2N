@@ -10,9 +10,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/CD2N/CD2N/retriever/config"
-	"github.com/CD2N/CD2N/retriever/gateway"
-	"github.com/CD2N/CD2N/retriever/utils"
+	"github.com/CESSProject/CD2N/retriever/config"
+	"github.com/CESSProject/CD2N/retriever/gateway"
+	"github.com/CESSProject/CD2N/retriever/utils"
 	"github.com/CESSProject/go-sdk/libs/tsproto"
 	"github.com/CESSProject/go-sdk/logger"
 	"github.com/gin-gonic/gin"

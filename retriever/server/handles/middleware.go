@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/CD2N/CD2N/retriever/node"
+	"github.com/CESSProject/CD2N/retriever/node"
 	"github.com/CESSProject/go-sdk/libs/buffer"
 	"github.com/CESSProject/go-sdk/libs/tsproto"
 	"github.com/gin-gonic/gin"

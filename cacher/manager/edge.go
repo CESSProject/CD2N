@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/CD2N/CD2N/cacher/config"
-	"github.com/CD2N/CD2N/cacher/utils"
+	"github.com/CESSProject/CD2N/cacher/config"
+	"github.com/CESSProject/CD2N/cacher/utils"
 	"github.com/CESSProject/go-sdk/libs/cache"
 	"github.com/CESSProject/go-sdk/libs/tsproto"
 	"github.com/CESSProject/go-sdk/logger"

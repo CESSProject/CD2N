@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/CD2N/CD2N/retriever/config"
+	"github.com/CESSProject/CD2N/retriever/config"
 	"github.com/klauspost/reedsolomon"
 )
 

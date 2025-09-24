@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/CD2N/CD2N/retriever/config"
-	"github.com/CD2N/CD2N/retriever/gateway"
+	"github.com/CESSProject/CD2N/retriever/config"
+	"github.com/CESSProject/CD2N/retriever/gateway"
 	"github.com/CESSProject/go-sdk/libs/tsproto"
 	"github.com/CESSProject/go-sdk/logger"
 	"github.com/ethereum/go-ethereum/crypto"
