@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -309,7 +310,7 @@ func (h *ServerHandle) BatchUploadRequest(c *gin.Context) {
 		return
 	}
 	if err = client.PutDataToRedis(h.partRecord, context.Background(),
-		fmt.Sprintf("%s-batch_upload-%s", h.nodeAddr, hash), info, 0); err != nil {
+		fmt.Sprintf("%s-batch_upload-%s", h.nodeAddr, hash), info, time.Hour*24); err != nil {
 		c.JSON(http.StatusBadRequest, tsproto.NewResponse(http.StatusBadRequest, "request batch upload error", err.Error()))
 		return
 	}
@@ -322,39 +323,39 @@ func (h *ServerHandle) BatchUpload(c *gin.Context) {
 	hash := c.GetHeader("hash")
 	file, err := c.FormFile("file")
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "parts upload error", err.Error()))
+		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "batch upload error", err.Error()))
 		return
 	}
 	value, ok := c.Get("user")
 	if !ok {
-		c.JSON(http.StatusBadRequest, tsproto.NewResponse(http.StatusBadRequest, "parts upload error", "bad user info"))
+		c.JSON(http.StatusBadRequest, tsproto.NewResponse(http.StatusBadRequest, "batch upload error", "bad user info"))
 		return
 	}
 	user, ok := value.(auth.UserInfo)
 	if !ok || user.Account == nil {
-		c.JSON(http.StatusBadRequest, tsproto.NewResponse(http.StatusBadRequest, "parts upload error", "bad user info"))
+		c.JSON(http.StatusBadRequest, tsproto.NewResponse(http.StatusBadRequest, "batch upload error", "bad user info"))
 		return
 	}
 	ctx, cancel := context.WithTimeout(c.Request.Context(), time.Second*60)
 	defer cancel()
 	f, err := file.Open()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "parts upload error", err.Error()))
+		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "batch upload error", err.Error()))
 		return
 	}
 	defer f.Close()
 	res := h.batchUpload(ctx, hash, dataRange, user.Account, f)
 	if res.Err != nil {
-		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "parts upload error", err.Error()))
+		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "batch upload error", res.Err.Error()))
 		return
 	}
 	if res.UploadedSize < res.TotalSize {
-		c.JSON(http.StatusPermanentRedirect, res.UploadedSize)
+		c.JSON(http.StatusPermanentRedirect, tsproto.NewResponse(http.StatusOK, "success", strconv.Itoa(int(res.UploadedSize))))
 		return
 	}
 	cfile, err := os.Open(res.FilePath)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "parts upload error", err.Error()))
+		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "batch upload error", err.Error()))
 		return
 	}
 	defer os.Remove(res.FilePath)
@@ -363,7 +364,7 @@ func (h *ServerHandle) BatchUpload(c *gin.Context) {
 	defer pcancel()
 	finfo, err := h.gateway.PreprocessFile(pctx, h.buffer, cfile, user.Account, res.Territory, res.FileName, res.Encrypt)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "upload user file error", err.Error()))
+		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "batch upload error", err.Error()))
 		return
 	}
 	h.upload(c, finfo, res.AsyncUpload, res.NoTxProxy)
@@ -409,28 +410,36 @@ func (h *ServerHandle) batchUploadServer() {
 				return
 			}
 			defer h.filepartMap.Delete(batchCmd.Hash)
-			var info BatchFilesInfo
+			var (
+				f    *os.File
+				info BatchFilesInfo
+				err  error
+			)
 			key := fmt.Sprintf("%s-batch_upload-%s", h.nodeAddr, batchCmd.Hash)
 			if err := client.GetDataFromRedis(h.partRecord, batchCmd.Ctx, key, &info); err != nil {
 				batchCmd.Res <- BatchUploadResult{Err: err}
 				return
 			}
-			if info.UploadedSize == info.TotalSize {
+			switch {
+			case time.Since(info.UpdateDate) >= time.Hour*24:
+				os.Remove(info.FilePath)
+				client.DeleteMessage(h.partRecord, batchCmd.Ctx, key)
+				batchCmd.Res <- BatchUploadResult{Err: errors.New("the data has expired.")}
+				return
+			case info.UploadedSize == info.TotalSize:
 				client.DeleteMessage(h.partRecord, batchCmd.Ctx, key)
 				batchCmd.Res <- BatchUploadResult{BatchFilesInfo: info}
 				return
-			}
-			if (batchCmd.Start == 0 && batchCmd.End == 0) || (batchCmd.End != 0 && batchCmd.End <= batchCmd.Start) {
+			case (batchCmd.Start == 0 && batchCmd.End == 0) || (batchCmd.End != 0 && batchCmd.End <= batchCmd.Start):
 				batchCmd.Res <- BatchUploadResult{Err: errors.New("bad data range")}
 				return
-			}
-			if info.Owner == nil || !bytes.Equal(batchCmd.User, info.Owner) {
+			case info.Owner == nil || !bytes.Equal(batchCmd.User, info.Owner):
 				batchCmd.Res <- BatchUploadResult{Err: errors.New("unauthorized access")}
 				return
-			}
-			if batchCmd.End == 0 {
+			case batchCmd.End == 0:
 				batchCmd.End = info.TotalSize
 			}
+
 			buf := make([]byte, batchCmd.End-batchCmd.Start)
 			if n, err := batchCmd.Reader.Read(buf); err != nil {
 				batchCmd.Res <- BatchUploadResult{Err: err}
@@ -439,8 +448,13 @@ func (h *ServerHandle) batchUploadServer() {
 				batchCmd.Res <- BatchUploadResult{Err: errors.New("bad data")}
 				return
 			}
-			f, err := os.Open(info.FilePath)
-			if err != nil {
+
+			if _, err = os.Stat(info.FilePath); err != nil {
+				if f, err = os.Create(info.FilePath); err != nil {
+					batchCmd.Res <- BatchUploadResult{Err: err}
+					return
+				}
+			} else if f, err = os.OpenFile(info.FilePath, os.O_WRONLY, 0644); err != nil {
 				batchCmd.Res <- BatchUploadResult{Err: err}
 				return
 			}
@@ -454,7 +468,7 @@ func (h *ServerHandle) batchUploadServer() {
 			if batchCmd.End == info.TotalSize {
 				client.DeleteMessage(h.partRecord, batchCmd.Ctx, key)
 			} else if err = client.PutDataToRedis(h.partRecord, batchCmd.Ctx,
-				fmt.Sprintf("%s-batch_upload-%s", h.nodeAddr, batchCmd.Hash), info, 0); err != nil {
+				fmt.Sprintf("%s-batch_upload-%s", h.nodeAddr, batchCmd.Hash), info, time.Hour*24); err != nil {
 				batchCmd.Res <- BatchUploadResult{Err: err}
 				return
 			}

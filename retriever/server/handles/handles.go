@@ -71,7 +71,7 @@ type BatchFilesInfo struct {
 	FileName     string    `json:"file_name,omitempty"`
 	Owner        []byte    `json:"owner,omitempty"`
 	Territory    string    `json:"territory,omitempty"`
-	FilePath     string    `json:"-"`
+	FilePath     string    `json:"file_path,omitempty"`
 	UploadedSize int64     `json:"uploaded_size,omitempty"`
 	TotalSize    int64     `json:"total_size,omitempty"`
 	AsyncUpload  bool      `json:"async_upload,omitempty"`
