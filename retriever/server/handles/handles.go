@@ -80,6 +80,12 @@ type BatchFilesInfo struct {
 	UpdateDate   time.Time `json:"update_date,omitempty"`
 }
 
+type BatchUploadResp struct {
+	Fid      string `json:"fid"`
+	ChunkEnd int64  `json:"chunk_end"`
+	FileInfo any    `json:"file_info"`
+}
+
 type BatchUploadResult struct {
 	Err error
 	BatchFilesInfo

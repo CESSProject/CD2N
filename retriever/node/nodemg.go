@@ -74,6 +74,7 @@ type NodeManager struct {
 	peerRetrievers          map[string]Retriever
 	activeCachers           map[string]Cacher
 	activeStorageNodeFilter *bloom.BloomFilter
+	ticker                  *time.Ticker
 	activeStorageNodes      *atomic.Int32
 	cacherNum               *atomic.Int32
 	lock                    *sync.RWMutex
@@ -89,6 +90,7 @@ func NewNodeManager(contract *evm.CacheProtoContract) *NodeManager {
 		activeStorageNodeFilter: bloom.NewWithEstimates(10000, 0.01),
 		lock:                    &sync.RWMutex{},
 		tokenMap:                &sync.Map{},
+		ticker:                  time.NewTicker(time.Hour),
 	}
 }
 
@@ -97,12 +99,16 @@ func (nm *NodeManager) UpdateCacherToken(token, addr string) {
 		Address:  addr,
 		LastTime: time.Now(),
 	})
-	nm.tokenMap.Range(func(key, value any) bool {
-		if r, ok := value.(TokenRecord); !ok || time.Since(r.LastTime) > 30*time.Minute {
-			nm.tokenMap.Delete(key)
-		}
-		return true
-	})
+	select {
+	case <-nm.ticker.C:
+		nm.tokenMap.Range(func(key, value any) bool {
+			if r, ok := value.(TokenRecord); !ok || time.Since(r.LastTime) > 30*time.Minute {
+				nm.tokenMap.Delete(key)
+			}
+			return true
+		})
+	default:
+	}
 }
 
 func (nm *NodeManager) GetCacherAddr(token string) (string, bool) {

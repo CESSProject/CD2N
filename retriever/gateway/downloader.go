@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"log"
 	"sync"
 	"time"
 
@@ -134,11 +135,13 @@ func (g *Gateway) downloadFromCess(ctx context.Context, b *buffer.FileBuffer, rr
 			continue
 		}
 		fragments, fragPaths := ParseDataIds(seg), []string{}
+		log.Println("fragments:", fragments)
 		sinfo := Segment{Index: i}
 		wg.Add(1)
 		if err := g.dlPool.Submit(func() {
 			defer wg.Done()
 			fragPaths, fragments = GetDataFromDiskBuffer(b, fragments...) //retrieve from local buffer
+			log.Println("uncached fragments:", fragments)
 			logger.GetLogger(config.LOG_GATEWAY).Infof("get fragments from local disk buffer:%v", len(fragPaths))
 
 			if len(fragPaths) < config.FRAGMENTS_NUM { //retrieve from L2 node, triggered when cache miss, low efficiency

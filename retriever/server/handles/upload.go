@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -108,7 +107,7 @@ func (h *ServerHandle) UploadLocalFile(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "upload user file error", err.Error()))
 		return
 	}
-	h.upload(c, finfo, async, noProxy)
+	h.upload(c, finfo, async, noProxy, false)
 }
 
 func (h *ServerHandle) UploadUserFileTemp(c *gin.Context) {
@@ -147,7 +146,7 @@ func (h *ServerHandle) UploadUserFileTemp(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "upload user file error", err.Error()))
 		return
 	}
-	h.upload(c, finfo, async, noProxy)
+	h.upload(c, finfo, async, noProxy, false)
 }
 
 func (h *ServerHandle) UploadUserFile(c *gin.Context) {
@@ -190,10 +189,10 @@ func (h *ServerHandle) UploadUserFile(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "upload user file error", err.Error()))
 		return
 	}
-	h.upload(c, finfo, async, noProxy)
+	h.upload(c, finfo, async, noProxy, false)
 }
 
-func (h *ServerHandle) upload(c *gin.Context, finfo task.FileInfo, async, noProxy bool) {
+func (h *ServerHandle) upload(c *gin.Context, finfo task.FileInfo, async, noProxy, batchUpload bool) {
 	//Precondition Check
 	resp := h.CheckPreconditions(finfo.Fid, finfo.Territory, finfo.Owner, finfo.FileSize)
 	if !async {
@@ -207,7 +206,11 @@ func (h *ServerHandle) upload(c *gin.Context, finfo task.FileInfo, async, noProx
 			return
 		}
 		h.gateway.BatchOffloadingWithFileInfo(finfo)
-		c.JSON(http.StatusOK, tsproto.NewResponse(http.StatusOK, "success", finfo.Fid))
+		if batchUpload {
+			c.JSON(http.StatusOK, tsproto.NewResponse(http.StatusOK, "success", BatchUploadResp{Fid: finfo.Fid}))
+		} else {
+			c.JSON(http.StatusOK, tsproto.NewResponse(http.StatusOK, "success", finfo.Fid))
+		}
 		return
 	}
 	client.PutDataToRedis(
@@ -223,7 +226,11 @@ func (h *ServerHandle) upload(c *gin.Context, finfo task.FileInfo, async, noProx
 		c.JSON(http.StatusOK, resp)
 		return
 	}
-	c.JSON(http.StatusOK, tsproto.NewResponse(http.StatusOK, "success", finfo))
+	if batchUpload {
+		c.JSON(http.StatusOK, tsproto.NewResponse(http.StatusOK, "success", BatchUploadResp{FileInfo: finfo}))
+	} else {
+		c.JSON(http.StatusOK, tsproto.NewResponse(http.StatusOK, "success", finfo))
+	}
 }
 
 func (h *ServerHandle) CheckPreconditions(fid, territory string, acc []byte, size int64) response.Response {
@@ -350,7 +357,7 @@ func (h *ServerHandle) BatchUpload(c *gin.Context) {
 		return
 	}
 	if res.UploadedSize < res.TotalSize {
-		c.JSON(http.StatusPermanentRedirect, tsproto.NewResponse(http.StatusOK, "success", strconv.Itoa(int(res.UploadedSize))))
+		c.JSON(http.StatusPermanentRedirect, tsproto.NewResponse(http.StatusOK, "success", BatchUploadResp{ChunkEnd: res.UploadedSize}))
 		return
 	}
 	cfile, err := os.Open(res.FilePath)
@@ -367,7 +374,7 @@ func (h *ServerHandle) BatchUpload(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, tsproto.NewResponse(http.StatusInternalServerError, "batch upload error", err.Error()))
 		return
 	}
-	h.upload(c, finfo, res.AsyncUpload, res.NoTxProxy)
+	h.upload(c, finfo, res.AsyncUpload, res.NoTxProxy, true)
 }
 
 func (h *ServerHandle) batchUpload(ctx context.Context, hash, dataRange string, acc []byte, reader io.Reader) BatchUploadResult {
@@ -418,6 +425,11 @@ func (h *ServerHandle) batchUploadServer() {
 			key := fmt.Sprintf("%s-batch_upload-%s", h.nodeAddr, batchCmd.Hash)
 			if err := client.GetDataFromRedis(h.partRecord, batchCmd.Ctx, key, &info); err != nil {
 				batchCmd.Res <- BatchUploadResult{Err: err}
+				return
+			}
+
+			if info.UploadedSize < batchCmd.Start {
+				h.batchUploadQueue <- batchCmd
 				return
 			}
 			switch {

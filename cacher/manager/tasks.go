@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/CESSProject/CD2N/cacher/client"
 	"github.com/CESSProject/CD2N/cacher/config"
 	"github.com/CESSProject/go-sdk/chain/evm"
 	"github.com/CESSProject/go-sdk/logger"
@@ -47,18 +48,23 @@ type Task struct {
 
 type TaskDispatcher struct {
 	*RetrieverManager
-	channels  []string
-	executors map[string]Executor
-	lock      *sync.RWMutex
-	taskCh    chan *redis.Message
-	pool      *ants.Pool
+	channels      []string
+	executors     map[string]Executor
+	lock          *sync.RWMutex
+	taskCh        chan *redis.Message
+	pool          *ants.Pool
+	retrieverPool *ants.Pool
 }
 
 func NewTaskDispatcher(wqLen int) (*TaskDispatcher, error) {
-	if wqLen <= 0 || wqLen > 1024 {
-		wqLen = 1024
+	if wqLen <= 0 || wqLen > 8192 {
+		wqLen = 8192
 	}
 	pool, err := ants.NewPool(256, ants.WithNonblocking(true))
+	if err != nil {
+		return nil, errors.Wrap(err, "new task dispatcher error")
+	}
+	retrieverPool, err := ants.NewPool(128, ants.WithNonblocking(true))
 	if err != nil {
 		return nil, errors.Wrap(err, "new task dispatcher error")
 	}
@@ -68,6 +74,7 @@ func NewTaskDispatcher(wqLen int) (*TaskDispatcher, error) {
 		lock:             &sync.RWMutex{},
 		taskCh:           make(chan *redis.Message, wqLen),
 		pool:             pool,
+		retrieverPool:    retrieverPool,
 	}, nil
 }
 
@@ -110,7 +117,7 @@ func (td *TaskDispatcher) TaskDispatch(ctx context.Context) error {
 			return nil
 		case task := <-td.taskCh:
 			var taskPld Task
-			logger.GetLogger(config.LOG_TASK).Infof("subscribe task from channel: %s", task.Channel)
+			logger.GetLogger(config.LOG_TASK).Infof("subscribe task from channel: %s, current queue length:%d", task.Channel, len(td.taskCh))
 			err := json.Unmarshal([]byte(task.Payload), &taskPld)
 			if err != nil {
 				logger.GetLogger(config.LOG_TASK).Error(err.Error())
@@ -124,7 +131,13 @@ func (td *TaskDispatcher) TaskDispatch(ctx context.Context) error {
 				continue
 			}
 			taskPld.Channel = task.Channel
-			if err = td.pool.Submit(func() {
+			var handler *ants.Pool
+			if task.Channel == client.CHANNEL_RETRIEVE {
+				handler = td.retrieverPool
+			} else {
+				handler = td.pool
+			}
+			if err = handler.Submit(func() {
 				if err := exector.Execute(taskPld); err != nil {
 					logger.GetLogger(config.LOG_TASK).Error(" execute task error: ", err.Error())
 				}
