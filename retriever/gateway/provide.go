@@ -84,7 +84,7 @@ func (g *Gateway) ProvideFile(ctx context.Context, buffer *buffer.FileBuffer, ga
 		}
 	}()
 	if !nonProxy {
-		hash, err = g.CreateStorageOrder(info)
+		hash, err = g.CreateStorageOrder(ctx, info)
 		if err != nil {
 			logger.GetLogger(config.LOG_PROVIDER).Error(errors.Wrap(err, "provide file error "), ", tx hash: ", hash)
 			return errors.Wrap(err, "provide file error")
@@ -398,8 +398,11 @@ func TaskNeedToBeGC(ftask task.ProvideTask) bool {
 		return true
 	}
 	for _, v := range ftask.SubTasks {
-		if v.Index < ftask.GroupSize && v.GroupId < config.FRAGMENTS_NUM {
+		if v.Index < ftask.GroupSize && v.GroupId >= config.FRAGMENTS_NUM {
 			fpath := filepath.Join(ftask.BaseDir, ftask.Fragments[v.Index][v.GroupId])
+			if strings.Contains(fpath, EMPTY_FRAGMENT_HASH) {
+				continue
+			}
 			if _, err := os.Stat(fpath); err != nil {
 				return true
 			}

@@ -24,6 +24,7 @@ ServerConfig:
   Debug: true
   IpfsAddress: "http://127.0.0.1:5001"
   RedisAddress: "46.250.249.195:6379"
+  RedisLocal: ""
   Endpoint: "http://46.250.249.195:1306"
   TeeAddress: "http://local_tee_node:1309"
   IpfsHost: ""

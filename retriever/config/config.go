@@ -64,7 +64,7 @@ type ServerConfig struct {
 	LaunchGateway   bool
 	Debug           bool
 	RedisAddress    string //redis host:port
-	RedisLoacl      string
+	RedisLocal      string
 	TeeAddress      string
 	Endpoint        string
 	IpfsHost        string
@@ -174,12 +174,12 @@ func InitConfig() error {
 	if conf.ChainId == 0 {
 		conf.ChainId = DEFAULT_CHAINID
 	}
-	if conf.RedisLoacl == "" {
+	if conf.RedisLocal == "" {
 		s := strings.Split(conf.RedisAddress, ":")
 		if len(s) < 2 {
-			conf.RedisLoacl = "redis_host:6379"
+			conf.RedisLocal = "redis_host:6379"
 		}
-		conf.RedisLoacl = fmt.Sprintf("redis_host:%s", s[len(s)-1])
+		conf.RedisLocal = fmt.Sprintf("redis_host:%s", s[len(s)-1])
 	}
 	conf.DownloadThreadNum = max(conf.DownloadThreadNum, 256)
 	conf.UploadChannelSize = max(conf.UploadChannelSize, 512)

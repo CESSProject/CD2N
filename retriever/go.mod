@@ -6,7 +6,7 @@ go 1.23.0
 
 require (
 	github.com/CESSProject/cess-crypto/gosdk v0.0.0-20250612080638-1885e7005e8a
-	github.com/CESSProject/go-sdk v0.1.5
+	github.com/CESSProject/go-sdk v0.2.4
 	github.com/bits-and-blooms/bloom/v3 v3.7.0
 	github.com/decred/base58 v1.0.5
 	github.com/ecies/go/v2 v2.0.11

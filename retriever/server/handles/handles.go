@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/CESSProject/CD2N/retriever/gateway"
 	"github.com/CESSProject/CD2N/retriever/libs/alert"
 	"github.com/CESSProject/CD2N/retriever/libs/client"
+	"github.com/CESSProject/CD2N/retriever/libs/task"
 	"github.com/CESSProject/CD2N/retriever/node"
 	"github.com/CESSProject/CD2N/retriever/utils"
 	"github.com/CESSProject/go-sdk/chain"
@@ -81,9 +83,9 @@ type BatchFilesInfo struct {
 }
 
 type BatchUploadResp struct {
-	Fid      string `json:"fid"`
-	ChunkEnd int64  `json:"chunk_end"`
-	FileInfo any    `json:"file_info"`
+	Fid      string        `json:"fid"`
+	ChunkEnd int64         `json:"chunk_end"`
+	FileInfo task.FileInfo `json:"file_info"`
 }
 
 type BatchUploadResult struct {
@@ -118,7 +120,9 @@ func (h *ServerHandle) InitHandlesRuntime(ctx context.Context) error {
 	if conf.PoolName == "" {
 		conf.PoolName = config.DEFAULT_CD2N_POOLID
 	}
-	h.poolId = base58.Encode([]byte(conf.PoolName))
+	bpid := [38]byte{}
+	copy(bpid[:], []byte(conf.PoolName))
+	h.poolId = base58.Encode(bpid[:])
 
 	if !conf.Debug {
 		h.teeEndpoint = conf.TeeAddress
@@ -179,7 +183,7 @@ func (h *ServerHandle) InitHandlesRuntime(ctx context.Context) error {
 	}
 
 	log.Println("init cd2n base module(redis client) ...")
-	redisCli := client.NewRedisClient(conf.RedisLoacl, "retriever", conf.RedisPwd)
+	redisCli := client.NewRedisClient(conf.RedisLocal, "retriever", conf.RedisPwd)
 	h.partRecord = redisCli
 	h.nodeAddr = contractCli.Node.Hex()
 
@@ -321,17 +325,30 @@ func (h *ServerHandle) registerOssNode(conf config.Config) error {
 	h.ossPubkey = key.PublicKey
 	oss, err := cli.QueryOss(key.PublicKey, 0)
 	cli.PutKey(key.Address)
+	if conf.Endpoint == "" {
+		conf.Endpoint = "empty"
+	}
+	if err != nil && !strings.Contains(err.Error(), "data not found") {
+		log.Println("query oss info error:", err)
+		hash, err := cli.RegisterOssWithPeerId(conf.Endpoint, h.poolId, nil, nil)
+		if err != nil {
+			return errors.Wrap(err, "register OSS node on chain error")
+		}
+		log.Println("register OSS node success, tx hash:", hash)
+	}
 	if err == nil {
 		log.Println("already reigster oss :", string(oss.Domain))
+		if string(oss.Domain) != conf.Endpoint || string(oss.Peerid[:]) != string(base58.Decode(h.poolId)) {
+			hash, err := cli.UpdateOssWithPeerId(conf.Endpoint, h.poolId, nil, nil)
+			if err != nil {
+				log.Println(err)
+			} else {
+				log.Println("update oss endpoint, tx hash:", hash)
+			}
+		}
 		return nil
 	}
-	log.Println("query oss info error:", err)
-	hash, err := cli.RegisterOss(conf.Endpoint, nil, nil)
-	if err != nil {
-		return errors.Wrap(err, "register OSS node on chain error")
-	}
-	log.Println("register OSS node success, tx hash:", hash)
-	return nil
+	return errors.Wrap(err, "register OSS node on chain error")
 }
 
 func (h *ServerHandle) registerNode(conf config.Config) (*evm.CacheProtoContract, error) {

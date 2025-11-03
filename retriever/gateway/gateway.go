@@ -349,11 +349,13 @@ func (g *Gateway) ProcessFile(buf *buffer.FileBuffer, name, fpath, territory str
 	return finfo, nil
 }
 
-func (g *Gateway) CreateStorageOrder(info task.FileInfo) (string, error) {
+func (g *Gateway) CreateStorageOrder(ctx context.Context, info task.FileInfo) (string, error) {
 	var (
 		segments []chain.SegmentList
 		user     chain.UserBrief
 		hash     string
+		hashCh   chan string = make(chan string, 1)
+		errCh    chan error  = make(chan error, 1)
 	)
 	for i, v := range info.Fragments {
 		segment := chain.SegmentList{
@@ -373,11 +375,25 @@ func (g *Gateway) CreateStorageOrder(info task.FileInfo) (string, error) {
 	user.FileName = types.NewBytes([]byte(info.FileName))
 	user.TerriortyName = types.NewBytes([]byte(info.Territory))
 	g.txPool.Submit(func() {
-		hash, err = g.cessCli.UploadDeclaration(getFileHash(info.Fid), segments, user, uint64(info.FileSize), nil, nil)
-		if err != nil && strings.Contains(err.Error(), "Insufficient balance") {
-			g.alarm.Alert("warn", err.Error())
+		hash, err := g.cessCli.UploadDeclaration(getFileHash(info.Fid), segments, user, uint64(info.FileSize), nil, nil)
+		if err != nil {
+			errCh <- err
+			if strings.Contains(err.Error(), "Insufficient balance") {
+				g.alarm.Alert("warn", err.Error())
+			}
+			return
 		}
+		hashCh <- hash
 	})
+	select {
+	case <-ctx.Done():
+		err = ctx.Err()
+		if err == nil {
+			err = errors.New("timeout!")
+		}
+	case hash = <-hashCh:
+	case err = <-errCh:
+	}
 	return hash, errors.Wrap(err, "create storage order error")
 }
 
