@@ -84,11 +84,17 @@ func (h *ServerHandle) FetchFile(c *gin.Context) {
 	}
 	h.partners.CacherDistribution(addr, true)
 
+	var size int64
 	c.Header("dflag", info.DataFlag)
 	switch info.DataFlag {
 	case gateway.DATA_FLAG_EMPTY:
 		//c.Status(http.StatusOK) Default Response
 	case gateway.DATA_FLAG_NORMAL:
+		if fs, err := os.Stat(info.FilePath); err != nil {
+			logger.GetLogger(config.LOG_PROVIDER).Errorf("get file %s normal data %s error:%v", fid, fragment, err)
+		} else {
+			size = fs.Size()
+		}
 		c.File(info.FilePath)
 	case gateway.DATA_FLAG_ORIGIN, gateway.DATA_FLAG_RAW:
 		start := int64(info.SegIdx*config.SEGMENT_SIZE + info.FragIdx*config.FRAGMENT_SIZE)
@@ -100,7 +106,7 @@ func (h *ServerHandle) FetchFile(c *gin.Context) {
 		}
 		defer file.Close()
 		reader := io.NewSectionReader(file, start, config.FRAGMENT_SIZE)
-		io.Copy(c.Writer, reader)
+		size, _ = io.Copy(c.Writer, reader)
 	}
-	logger.GetLogger(config.LOG_PROVIDER).Infof("L2 Node %s fetch fragment %s from file %s  success.", c.ClientIP(), fragment, fid)
+	logger.GetLogger(config.LOG_PROVIDER).Infof("L2 Node %s fetch fragment %s from file %s (size:%d) success.", c.ClientIP(), fragment, fid, size)
 }

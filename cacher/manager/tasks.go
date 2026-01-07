@@ -8,6 +8,7 @@ import (
 
 	"github.com/CESSProject/CD2N/cacher/client"
 	"github.com/CESSProject/CD2N/cacher/config"
+	"github.com/CESSProject/CD2N/cacher/utils"
 	"github.com/CESSProject/go-sdk/chain/evm"
 	"github.com/CESSProject/go-sdk/logger"
 	"github.com/go-redis/redis/v8"
@@ -137,6 +138,7 @@ func (td *TaskDispatcher) TaskDispatch(ctx context.Context) error {
 			} else {
 				handler = td.pool
 			}
+			taskPld.Addr = utils.CheckAndAddHttpHeader(taskPld.Addr)
 			if err = handler.Submit(func() {
 				if err := exector.Execute(taskPld); err != nil {
 					logger.GetLogger(config.LOG_TASK).Error(" execute task error: ", err.Error())

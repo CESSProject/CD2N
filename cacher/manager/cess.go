@@ -456,9 +456,13 @@ func (te *CessAccessTaskExecutor) FetchDataFromRetriever(task *DataProvideTask) 
 	if err = DataProcessing(data, task.Did, task.Path, flag); err != nil {
 		return errors.Wrap(err, "fetch data from retriever error")
 	}
+	fs, err := os.Stat(task.Path)
+	if err != nil {
+		return errors.Wrap(err, "fetch data from retriever error")
+	}
 	logger.GetLogger(config.LOG_TASK).Infof(
-		"task[%s(token:%s)]: fetch file %s fragment %s for miner %s success",
-		task.Tid, task.Token, task.Fid, task.Did, task.Storager.Account,
+		"task[%s(token:%s)]: fetch file %s fragment %s (size:%d) success",
+		task.Tid, task.Token, task.Fid, task.Did, fs.Size(),
 	)
 	return nil
 }
@@ -471,7 +475,7 @@ func DataProcessing(source []byte, did, fpath, flag string) error {
 	case DATA_FLAG_EMPTY:
 		target = make([]byte, FRAGMENT_SIZE)
 	case DATA_FLAG_ORIGIN, DATA_FLAG_NORMAL:
-		target := make([]byte, FRAGMENT_SIZE)
+		target = make([]byte, FRAGMENT_SIZE)
 		copy(target, source)
 	case DATA_FLAG_RAW:
 		segment := make([]byte, SEGMENT_SIZE)
@@ -511,10 +515,14 @@ func (te *CessAccessTaskExecutor) PushDataToStorageNode(task *DataProvideTask) e
 	if err != nil {
 		return errors.Wrap(err, "push data to storage node error")
 	}
+	fs, err := os.Stat(task.Path)
+	if err != nil {
+		return errors.Wrap(err, "push data to storage node error")
+	}
 	acc, msg, sign := te.GetSignInfoTuple()
 	if err := tsproto.PushFileToStorageNode(u, acc, msg, sign, task.Fid, task.Did, task.Path); err != nil {
 		return errors.Wrap(err, "push data to storage node error")
 	}
-	logger.GetLogger(config.LOG_TASK).Infof("push data %s fragment %s to miner %s success.", task.Fid, task.Did, task.Storager.Account)
+	logger.GetLogger(config.LOG_TASK).Infof("push data %s fragment %s (size:%d) to miner %s success.", task.Fid, task.Did, fs.Size(), task.Storager.Account)
 	return nil
 }

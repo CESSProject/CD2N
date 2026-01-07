@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/cosmos/go-bip39"
 	"github.com/ethereum/go-ethereum/common"
@@ -195,4 +196,13 @@ func MakeDir(dir string) error {
 		}
 	}
 	return nil
+}
+
+func CheckAndAddHttpHeader(addr string) string {
+	lowerAddr := strings.ToLower(addr)
+	if strings.HasPrefix(lowerAddr, "http://") ||
+		strings.HasPrefix(lowerAddr, "https://") {
+		return addr
+	}
+	return "http://" + addr
 }

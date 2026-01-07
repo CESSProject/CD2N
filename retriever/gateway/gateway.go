@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log"
 	"net/url"
 	"os"
 	"strings"
@@ -324,6 +325,7 @@ func (g *Gateway) ProcessFile(buf *buffer.FileBuffer, name, fpath, territory str
 			fragments = append(fragments, fragment)
 			if index <= config.FRAGMENTS_NUM || fragment == EMPTY_FRAGMENT_HASH || smallDataFlag {
 				// Optimization: do not save fragment data of empty, original, or small file
+				log.Println("optimization: ", fragment)
 				return nil
 			}
 			fragPath, err := buf.JoinPath(baseDir, fragment)

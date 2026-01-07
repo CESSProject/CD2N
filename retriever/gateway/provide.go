@@ -300,14 +300,8 @@ func (g *Gateway) checker(ctx context.Context, buffer *buffer.FileBuffer, stat S
 				return err
 			}
 
-			gcflag := TaskNeedToBeGC(ftask)
-			if ftask.WorkDone || gcflag {
-				if gcflag {
-					TaskGc(buffer, ftask)
-					logger.GetLogger(config.LOG_PROVIDER).Infof("file %s expires and task is collected. \n", fid)
-				} else {
-					logger.GetLogger(config.LOG_PROVIDER).Infof("file %s distribute workflow done. \n", fid)
-				}
+			if ftask.WorkDone {
+				logger.GetLogger(config.LOG_PROVIDER).Infof("file %s distribute workflow done. \n", fid)
 				g.pstats.TaskDone(fid)
 				g.keyLock.RemoveLock(fid)
 				client.DeleteMessage(g.redisCli, context.Background(), key)
@@ -347,6 +341,14 @@ func (g *Gateway) checker(ctx context.Context, buffer *buffer.FileBuffer, stat S
 				done = task.PROVIDE_TASK_GROUP_NUM
 			} else {
 				logger.GetLogger(config.LOG_PROVIDER).Error(err)
+				return nil
+			}
+
+			if gcflag := TaskNeedToBeGC(ftask); gcflag {
+				logger.GetLogger(config.LOG_PROVIDER).Infof("file %s has expired or become invalid, and task is collected. \n", fid)
+				TaskGc(buffer, ftask)
+				g.keyLock.RemoveLock(fid)
+				client.DeleteMessage(g.redisCli, context.Background(), key)
 				return nil
 			}
 
@@ -403,7 +405,11 @@ func TaskNeedToBeGC(ftask task.ProvideTask) bool {
 			if strings.Contains(fpath, EMPTY_FRAGMENT_HASH) {
 				continue
 			}
+			if rsize := ftask.FileSize % config.SEGMENT_SIZE; v.Index == ftask.GroupSize-1 && (rsize > 0 && rsize <= config.FRAGMENT_SIZE) {
+				continue
+			}
 			if _, err := os.Stat(fpath); err != nil {
+				logger.GetLogger(config.LOG_PROVIDER).Errorf("check subtask file %s fragment %s (%d,%d) error:%v", ftask.Fid, ftask.Fragments[v.Index][v.GroupId], v.Index, v.GroupId, err)
 				return true
 			}
 		}

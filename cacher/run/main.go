@@ -6,7 +6,7 @@ import (
 	"github.com/CESSProject/CD2N/cacher/run/cmd"
 )
 
-const VERSION = "v0.1.0"
+const VERSION = "v0.1.1"
 
 func main() {
 	log.Println("CODE VERSION:", VERSION)
