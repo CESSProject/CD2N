@@ -126,6 +126,8 @@ func RegisterHandles(router *gin.Engine, h *handles.ServerHandle) {
 	router.GET("/fetch", h.FetchFile)
 	router.POST("/offload", h.Ac.ClaimDataLimitMiddleware(), h.ClaimOffloadingData)
 
+	router.GET("/open/:fid", h.OpenUserFile)
+
 	gateway := router.Group("/gateway")
 	gateway.Use(TokenVerify)
 	gateway.GET("/capsule/:fid", h.GetPreCapsule)
